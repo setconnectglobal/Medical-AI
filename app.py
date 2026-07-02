@@ -36,6 +36,14 @@ import cv2
 import json
 import datetime
 import urllib.parse
+import concurrent.futures
+import shutil
+import glob
+import time
+import threading
+
+bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -647,7 +655,8 @@ def get_mongodb_connection():
     except Exception as e:
         print(f"⚠️ MongoDB Connection offline: {e}")
         return None, "Offline ❌ (Inference active)"
-def log_agent_draft(db, status="Incomplete", step_logs=None, confidence=None, diagnosis=None, s3_url=None, patient_name=None, patient_id=None):
+
+def log_agent_draft(db, status="Incomplete", step_logs=None, confidence=None, diagnosis=None, s3_url=None, patient_name=None, patient_id=None, doc_id=None):
     if db is None:
         return None
         
@@ -680,6 +689,9 @@ def log_agent_draft(db, status="Incomplete", step_logs=None, confidence=None, di
             "status": "Pending UI Feedback"
         }
     }
+    if doc_id:
+        draft_doc["_id"] = doc_id
+        
     try:
         res = logs_collection.insert_one(draft_doc)
         return res.inserted_id
@@ -693,32 +705,231 @@ def submit_doctor_feedback(doc_id_str, feedback_text):
         return "⚠️ No active analysis session. Please analyze a scan first."
     if not feedback_text:
         return "⚠️ Feedback text cannot be empty."
-    if db_client is None:
-        return "❌ MongoDB Connection offline. Cannot save feedback."
         
-    try:
-        from bson.objectid import ObjectId
-        logs_collection = db_client["agent_result_logs"]
-        res = logs_collection.update_one(
-            {"_id": ObjectId(doc_id_str)},
-            {
-                "$set": {
-                    "human_in_the_loop": {
-                        "status": "Feedback Submitted",
-                        "doctor_feedback": feedback_text,
-                        "feedback_timestamp": datetime.datetime.utcnow()
+    # Check if the database is online and the document exists
+    if db_client is not None:
+        try:
+            from bson.objectid import ObjectId
+            logs_collection = db_client["agent_result_logs"]
+            res = logs_collection.update_one(
+                {"_id": ObjectId(doc_id_str)},
+                {
+                    "$set": {
+                        "human_in_the_loop": {
+                            "status": "Feedback Submitted",
+                            "doctor_feedback": feedback_text,
+                            "feedback_timestamp": datetime.datetime.utcnow()
+                        }
                     }
                 }
-            }
-        )
-        if res.modified_count > 0:
-            print(f"[OK] Doctor Feedback updated for Document {doc_id_str}")
-            return "✅ Doctor Feedback submitted and saved to MongoDB successfully!"
-        else:
-            return "⚠️ Document found, but no modifications were made."
+            )
+            if res.modified_count > 0:
+                print(f"[OK] Doctor Feedback updated for Document {doc_id_str}")
+                return "✅ Doctor Feedback submitted and saved to MongoDB successfully!"
+        except Exception as e:
+            print(f"[WARNING] Online feedback update failed: {e}. Checking offline queue...")
+            
+    # Fallback/Offline check: look in offline_queue/
+    import glob
+    import json
+    try:
+        log_files = glob.glob("offline_queue/log_*.json")
+        for file_path in log_files:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+            if data.get("doc_id") == doc_id_str:
+                data["human_in_the_loop"] = {
+                    "status": "Feedback Submitted",
+                    "doctor_feedback": feedback_text,
+                    "feedback_timestamp": datetime.datetime.utcnow().isoformat()
+                }
+                with open(file_path, 'w') as f_w:
+                    json.dump(data, f_w, indent=4)
+                print(f"[OFFLINE QUEUE] Local doctor feedback updated for {doc_id_str}")
+                return "✅ App is offline, but Doctor Feedback was saved locally and will sync once online!"
     except Exception as e:
-        print(f"[WARNING] Failed to submit feedback: {e}")
-        return f"❌ Failed to submit feedback: {e}"
+        print(f"[WARNING] Failed to update local feedback file: {e}")
+            
+    return "❌ Failed to submit feedback: Document not found online or in offline queue."
+
+def bg_save_task(filepath, actions, confidence, label, patient_name, patient_id, doc_id):
+    """
+    Background worker task to upload raw scans to S3 and write diagnostic logs to MongoDB.
+    If either service is offline or fails, saves logs locally to the offline_queue/ directory.
+    """
+    global db_client
+    s3_url = None
+    s3_uploaded = False
+    mongo_logged = False
+    
+    # 1. Attempt S3 upload
+    try:
+        if filepath and os.path.exists(filepath):
+            s3_url = upload_to_s3(filepath)
+            if s3_url:
+                s3_uploaded = True
+                print(f"[BG SAVE] S3 upload successful: {s3_url}")
+    except Exception as e:
+        print(f"[BG SAVE WARNING] S3 upload failed: {e}")
+        
+    # 2. Attempt MongoDB logging using the pre-generated doc_id
+    if db_client is not None:
+        try:
+            status = "Successful Run" if "Low Confidence" not in label else "Low Confidence Flagged"
+            inserted_id = log_agent_draft(
+                db=db_client,
+                status=status,
+                step_logs=actions,
+                confidence=confidence,
+                diagnosis=label,
+                s3_url=s3_url,
+                patient_name=patient_name,
+                patient_id=patient_id,
+                doc_id=doc_id
+            )
+            if inserted_id:
+                mongo_logged = True
+                print(f"[BG SAVE] MongoDB Atlas log created: {inserted_id}")
+        except Exception as e:
+            print(f"[BG SAVE WARNING] MongoDB logging failed: {e}")
+
+    # 3. Fallback: Local offline queue logging if any step failed
+    if not s3_uploaded or not mongo_logged:
+        try:
+            os.makedirs("offline_queue", exist_ok=True)
+            offline_filepath = filepath
+            
+            # Copy to offline folder if it's a temporary file that might be cleaned up
+            if filepath and os.path.exists(filepath):
+                base_name = os.path.basename(filepath)
+                timestamp_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                safe_name = f"offline_queue/scan_{timestamp_str}_{base_name}"
+                shutil.copy(filepath, safe_name)
+                offline_filepath = os.path.abspath(safe_name)
+            
+            offline_log = {
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "doc_id": str(doc_id),
+                "filepath": offline_filepath,
+                "patient_name": patient_name,
+                "patient_id": patient_id,
+                "actions": actions,
+                "confidence": confidence,
+                "label": label,
+                "s3_url": s3_url,
+                "human_in_the_loop": {
+                    "status": "Pending UI Feedback"
+                }
+            }
+            
+            log_path = f"offline_queue/log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{doc_id}.json"
+            with open(log_path, 'w') as f_out:
+                json.dump(offline_log, f_out, indent=4)
+            print(f"[BG SAVE] Local offline log written: {log_path}")
+        except Exception as err:
+            print(f"[BG SAVE ERROR] Failed to write local fallback log: {err}")
+
+def sync_offline_jobs():
+    """
+    Checks for pending offline logs and attempts to sync them to S3 and MongoDB.
+    """
+    global db_client, db_status
+    
+    # Attempt to reconnect if currently offline
+    if db_client is None:
+        db_client, db_status = get_mongodb_connection()
+        if db_client is None:
+            return # Still offline, retry on next loop
+            
+    log_files = glob.glob("offline_queue/log_*.json")
+    if not log_files:
+        return
+        
+    print(f"[OFFLINE SYNC] Found {len(log_files)} pending offline logs. Starting sync...")
+    for file_path in log_files:
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+            
+            doc_id_str = data.get("doc_id")
+            from bson.objectid import ObjectId
+            doc_id = ObjectId(doc_id_str)
+            
+            # Check if S3 upload is needed
+            s3_url = data.get("s3_url")
+            scan_file = data.get("filepath")
+            if not s3_url and scan_file and os.path.exists(scan_file):
+                s3_url = upload_to_s3(scan_file)
+                if s3_url:
+                    data["s3_url"] = s3_url
+                    # Update local json
+                    with open(file_path, 'w') as f_w:
+                        json.dump(data, f_w, indent=4)
+            
+            # Write to MongoDB Atlas
+            status = "Successful Run" if "Low Confidence" not in data["label"] else "Low Confidence Flagged"
+            
+            # Ensure we preserve doctor feedback if submitted offline
+            hitl_data = data.get("human_in_the_loop", {"status": "Pending UI Feedback"})
+            
+            logs_collection = db_client["agent_result_logs"]
+            
+            # Clean step prefixes
+            clean_steps = []
+            if data["actions"]:
+                for step in data["actions"]:
+                    if ":" in str(step):
+                        parts = str(step).split(":")
+                        clean_steps.append(parts[-1].strip())
+                    else:
+                        clean_steps.append(str(step))
+            else:
+                clean_steps = ["none"]
+                
+            draft_doc = {
+                "_id": doc_id,
+                "timestamp": datetime.datetime.utcnow(),
+                "execution_status": status,
+                "patient_name": data["patient_name"] if data["patient_name"] else "Unknown",
+                "patient_id": data["patient_id"] if data["patient_id"] else "Unknown",
+                "s3_url": s3_url,
+                "agent_steps": clean_steps,
+                "diagnostic_context": {
+                    "disease": data["label"] if data["label"] else "Unknown",
+                    "confidence": float(data["confidence"]) if data["confidence"] is not None else 0.0
+                },
+                "human_in_the_loop": hitl_data
+            }
+            
+            logs_collection.insert_one(draft_doc)
+            print(f"[OFFLINE SYNC] Successfully synced document {doc_id_str} to MongoDB.")
+            
+            # Delete processed logs
+            os.remove(file_path)
+            if scan_file and scan_file.startswith("offline_queue/") and os.path.exists(scan_file):
+                try:
+                    os.remove(scan_file)
+                except Exception as file_err:
+                    print(f"[OFFLINE SYNC] Failed to delete scan file {scan_file}: {file_err}")
+                    
+        except Exception as e:
+            print(f"[OFFLINE SYNC ERROR] Failed to sync log {file_path}: {e}")
+
+def start_offline_sync_loop():
+    """
+    Launches a daemon thread that polls the offline queue folder for pending logs.
+    """
+    def loop():
+        while True:
+            time.sleep(30)
+            try:
+                sync_offline_jobs()
+            except Exception as e:
+                print(f"[OFFLINE SYNC LOOP ERROR] {e}")
+                
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+    print("🔄 [OFFLINE SYNC] Background synchronization thread started.")
 
 # ==============================================================================
 # 6. DUAL-COLLECTION VECTOR DATABASE & RETRIEVAL (Lightweight Cosine Search)
@@ -1395,6 +1606,11 @@ def analyze_scan(input_file, patient_name, patient_id):
         
     filepath = input_file.name if hasattr(input_file, 'name') else str(input_file)
     
+    # Pre-generate unique MongoDB document ID locally
+    from bson.objectid import ObjectId
+    doc_id = ObjectId()
+    doc_id_str = str(doc_id)
+    
     # Re-evaluate connection if it was offline
     if db_client is None:
         db_client, db_status = get_mongodb_connection()
@@ -1403,14 +1619,7 @@ def analyze_scan(input_file, patient_name, patient_id):
     try:
         input_img = load_medical_image(filepath)
     except Exception as e:
-        return None, None, f"❌ Image Loading Error: {e}", "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", "❌ Processing Failed.", db_status
-
-    # Upload original scan to S3
-    try:
-        s3_url = upload_to_s3(filepath)
-    except Exception as e:
-        print(f"[WARNING] S3 Upload failed: {e}")
-        s3_url = None
+        return None, None, f"❌ Image Loading Error: {e}", "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", f"❌ Image Loading Error: {e}", db_status
 
     # 1. Run classifier-guided RL Preprocessor
     try:
@@ -1438,17 +1647,18 @@ The Generalist classified the scan category with low confidence (**{confidence*1
 *   **Bypassed Path:** Biliary / Specialist neural diagnostic routing was aborted for safety.
 *   **Action Required:** This case has been flagged and pushed to MongoDB Atlas. Scan slice requires manual clinical review by a human Radiologist.
 """
-        doc_id = log_agent_draft(
-            db=db_client,
-            status="Low Confidence Flagged",
-            step_logs=actions,
-            confidence=confidence,
-            diagnosis=label,
-            s3_url=s3_url,
-            patient_name=patient_name,
-            patient_id=patient_id
+        # Submit S3 upload and MongoDB logging to background thread pool
+        bg_executor.submit(
+            bg_save_task,
+            filepath,
+            actions,
+            confidence,
+            label,
+            patient_name,
+            patient_id,
+            doc_id
         )
-        return input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", s3_url if s3_url else "N/A (S3 Offline)", str(doc_id) if doc_id else "", rag_report, db_status
+        return input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", "Uploading in background...", doc_id_str, rag_report, db_status
 
     # 4. Generate Clinical RAG Report for High-Confidence predictions
     try:
@@ -1458,19 +1668,19 @@ The Generalist classified the scan category with low confidence (**{confidence*1
     except Exception as e:
         rag_report = f"⚠️ RAG Pipeline Error: {e}"
 
-    # 5. Log successfully processed run to MongoDB Atlas
-    doc_id = log_agent_draft(
-        db=db_client,
-        status="Successful Run",
-        step_logs=actions,
-        confidence=confidence,
-        diagnosis=label,
-        s3_url=s3_url,
-        patient_name=patient_name,
-        patient_id=patient_id
+    # 5. Submit S3 upload and MongoDB logging to background thread pool
+    bg_executor.submit(
+        bg_save_task,
+        filepath,
+        actions,
+        confidence,
+        label,
+        patient_name,
+        patient_id,
+        doc_id
     )
     
-    return input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", s3_url if s3_url else "N/A (S3 Offline)", str(doc_id) if doc_id else "", rag_report, db_status
+    return input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", "Uploading in background...", doc_id_str, rag_report, db_status
 
 def reset_workspace():
     return None, "", "", None, None, "", "", "", "", "", None, "", "", "", db_status
@@ -1489,72 +1699,341 @@ custom_theme = gr.themes.Soft(
 import inspect
 theme_in_launch = 'theme' in inspect.signature(gr.Blocks.launch).parameters
 
-blocks_kwargs = {"title": "NeuroScan Workstation"}
+custom_css = """
+/* Sidebar panel styling */
+.sidebar-container {
+    background-color: #f8f9fa !important;
+    border-right: 1px solid #e2e8f0 !important;
+    padding: 20px 15px !important;
+    min-height: 800px !important;
+}
+
+.sidebar-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #2b6cb0;
+    margin-bottom: 25px;
+    text-align: center;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.menu-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: #a0aec0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+    margin-top: 20px;
+    padding-left: 5px;
+}
+
+.sidebar-nav-btn {
+    text-align: left !important;
+    justify-content: flex-start !important;
+    background-color: transparent !important;
+    border: none !important;
+    color: #4a5568 !important;
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    padding: 12px 16px !important;
+    width: 100% !important;
+    border-radius: 6px !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 5px;
+    box-shadow: none !important;
+}
+
+.sidebar-nav-btn:hover {
+    background-color: #edf2f7 !important;
+    color: #2d3748 !important;
+}
+
+.active-nav-btn {
+    background-color: #38a169 !important; /* Green highlight */
+    color: white !important;
+    font-weight: 600 !important;
+}
+
+.active-nav-btn:hover {
+    background-color: #2f855a !important;
+    color: white !important;
+}
+
+/* Card layout container */
+.card-container {
+    background-color: white !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    padding: 24px !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.05) !important;
+    margin-bottom: 20px !important;
+}
+"""
+
+blocks_kwargs = {"title": "NeuroScan Workstation", "css": custom_css}
 if not theme_in_launch:
     blocks_kwargs["theme"] = custom_theme
 
 with gr.Blocks(**blocks_kwargs) as demo:
     current_doc_id = gr.State("")
 
-    gr.Markdown(
-        """
-        # 🧠 NeuroScan: Adaptive Medical Image Diagnostic Station
-        This workstation runs a **Generalist-Specialist Hierarchical Classifier** combined with a **Reinforcement Learning Preprocessor** and a **Dual-Collection Vector RAG Pipeline**.
-        """
-    )
-    
     with gr.Row():
-        with gr.Column(scale=1):
-            gr.Markdown("### 📡 Connection Panel")
+        # Sidebar menu
+        with gr.Column(scale=1, elem_classes="sidebar-container"):
+            gr.HTML("""
+                <div class="sidebar-title">🩺 SetConnect MedAI</div>
+                <div class="menu-header">Main Menu</div>
+            """)
+            
+            nav_overview_btn = gr.Button("👁️ Overview", elem_classes="sidebar-nav-btn active-nav-btn")
+            nav_load_patient_btn = gr.Button("📥 Load Patient", elem_classes="sidebar-nav-btn")
+            nav_clinical_review_btn = gr.Button("📋 Clinical Review", elem_classes="sidebar-nav-btn")
+            nav_clinical_report_btn = gr.Button("📄 Clinical Report", elem_classes="sidebar-nav-btn")
+            
+            gr.HTML("""<div class="menu-header">System Health</div>""")
             db_status_box = gr.Textbox(
                 value=db_status,
-                label="MongoDB Atlas Connection Status",
+                label="MongoDB Atlas Status",
                 interactive=False
             )
             
-            gr.Markdown("### 📥 Patient Metadata & Scan Upload")
-            patient_name_input = gr.Textbox(label="Patient Name", placeholder="Enter patient name...")
-            patient_id_input = gr.Textbox(label="Patient ID", placeholder="Enter patient ID...")
-            input_image = gr.File(
-                file_types=[".png", ".jpg", ".jpeg", ".dcm"],
-                label="Upload Scan (JPEG/PNG/DICOM)"
-            )
+        # Main content area
+        with gr.Column(scale=4):
             
-            with gr.Row():
-                analyze_btn = gr.Button("Analyze Scan", variant="primary")
-                reset_btn = gr.Button("Reset Workstation", variant="secondary")
-                
-        with gr.Column(scale=2):
-            gr.Markdown("### 👁️ Image Preprocessing Visualization")
-            with gr.Row():
-                original_display = gr.Image(label="Original Scan", interactive=False)
-                processed_display = gr.Image(label="RL-Agent Preprocessed", interactive=False)
-                
-            with gr.Accordion("📋 RL Preprocessor Execution Logs", open=False):
-                rl_logs_box = gr.Code(label="RL Steps & Metrics", language="markdown", interactive=False)
-                
-            gr.Markdown("### 🏷️ Hierarchical Diagnostic Output")
-            with gr.Row():
-                lvl1_box = gr.Textbox(label="Level 1: Broad Category / Organ System", interactive=False)
-                lvl2_box = gr.Textbox(label="Level 2: Specific Pathology / Diagnosis", interactive=False)
-                confidence_box = gr.Label(label="Confidence Score")
-            with gr.Row():
-                s3_url_box = gr.Textbox(label="S3 Cloud Storage Presigned URL", interactive=False, show_copy_button=True)
+            # --- TABS/SECTIONS ---
             
-            gr.Markdown("### 💬 Human-in-the-Loop Clinical Feedback")
-            with gr.Row():
-                doctor_feedback_input = gr.Textbox(
-                    label="Doctor Feedback / Clinical Correction Notes", 
-                    placeholder="Enter corrections, validation, or notes for MongoDB logging...",
-                    scale=3
-                )
-                submit_feedback_btn = gr.Button("Submit Feedback", variant="primary", scale=1)
-            feedback_status = gr.Markdown(value="", container=True)
-                
-    with gr.Row():
-        with gr.Column():
-            gr.Markdown("### 📄 Clinical Justification Report (Agentic RAG)")
-            rag_output = gr.Markdown(value="*Awaiting scan analysis...*", container=True)
+            # SECTION 1: OVERVIEW
+            with gr.Column(visible=True) as overview_section:
+                with gr.Column(elem_classes="card-container"):
+                    gr.HTML("""
+                        <h2 style="margin-top: 0; color: #2b6cb0;">📊 Diagnostics System Overview</h2>
+                        <p style="color: #4a5568;">Real-time diagnostics tracking, system performance metrics, and clinical pipelines.</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px; margin-top: 15px;">
+                            <div style="background: linear-gradient(135deg, #ebf8ff 0%, #bee3f8 100%); border: 1px solid #bee3f8; border-radius: 8px; padding: 16px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #2b6cb0; text-transform: uppercase;">Active AI Networks</div>
+                                <div style="font-size: 28px; font-weight: 700; color: #2b6cb0; margin-top: 5px;">8 Models</div>
+                                <div style="font-size: 12px; color: #4976a4; margin-top: 5px;">1 Generalist + 7 Specialists</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #faf5ff 0%, #e9d8fd 100%); border: 1px solid #e9d8fd; border-radius: 8px; padding: 16px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #6b46c1; text-transform: uppercase;">Knowledge Bases</div>
+                                <div style="font-size: 28px; font-weight: 700; color: #6b46c1; margin-top: 5px;">2 databases</div>
+                                <div style="font-size: 12px; color: #805ad5; margin-top: 5px;">Medical texts + Clinical logs</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%); border: 1px solid #c6f6d5; border-radius: 8px; padding: 16px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #2f855a; text-transform: uppercase;">Pipeline Latency</div>
+                                <div style="font-size: 28px; font-weight: 700; color: #2f855a; margin-top: 5px;">&lt; 1.5s</div>
+                                <div style="font-size: 12px; color: #38a169; margin-top: 5px;">Inference & Preprocessing</div>
+                            </div>
+                        </div>
+                    """)
+                    
+                with gr.Column(elem_classes="card-container"):
+                    gr.HTML("""
+                        <h3 style="margin-top: 0; color: #2d3748; margin-bottom: 15px;">🔄 AI Agent Diagnostic Flow</h3>
+                        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 15px; background-color: #f7fafc; padding: 20px; border-radius: 8px; border: 1px solid #edf2f7; margin-bottom: 15px;">
+                            <div style="flex: 1; min-width: 120px; text-align: center; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                <div style="font-weight: 600; color: #2d3748;">1. Scan Ingestion</div>
+                                <div style="font-size: 12px; color: #718096; margin-top: 4px;">DICOM / Image Upload</div>
+                            </div>
+                            <div style="color: #a0aec0; font-size: 20px; font-weight: bold;">➔</div>
+                            <div style="flex: 1; min-width: 120px; text-align: center; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                <div style="font-weight: 600; color: #2d3748;">2. RL Agent</div>
+                                <div style="font-size: 12px; color: #718096; margin-top: 4px;">Contrast/Blur Policy</div>
+                            </div>
+                            <div style="color: #a0aec0; font-size: 20px; font-weight: bold;">➔</div>
+                            <div style="flex: 1; min-width: 120px; text-align: center; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                <div style="font-weight: 600; color: #2d3748;">3. Hierarchical AI</div>
+                                <div style="font-size: 12px; color: #718096; margin-top: 4px;">Generalist + Specialist</div>
+                            </div>
+                            <div style="color: #a0aec0; font-size: 20px; font-weight: bold;">➔</div>
+                            <div style="flex: 1; min-width: 120px; text-align: center; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                <div style="font-weight: 600; color: #2d3748;">4. Agentic RAG</div>
+                                <div style="font-size: 12px; color: #718096; margin-top: 4px;">Clinical Justification</div>
+                            </div>
+                        </div>
+                    """)
+                    
+                with gr.Column(elem_classes="card-container"):
+                    gr.HTML("""
+                        <h3 style="margin-top: 0; color: #2d3748; margin-bottom: 10px;">📋 Recent Patient Entries</h3>
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 10px;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #e2e8f0; color: #4a5568; font-weight: 600;">
+                                    <th style="padding: 10px 5px;">Patient ID</th>
+                                    <th style="padding: 10px 5px;">Patient Name</th>
+                                    <th style="padding: 10px 5px;">Scan Type</th>
+                                    <th style="padding: 10px 5px;">Broad Category</th>
+                                    <th style="padding: 10px 5px;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr style="border-bottom: 1px solid #edf2f7; color: #2d3748;">
+                                    <td style="padding: 12px 5px; font-family: monospace;">neuro_908</td>
+                                    <td style="padding: 12px 5px;">Emma Watson</td>
+                                    <td style="padding: 12px 5px;">Brain MRI (.dcm)</td>
+                                    <td style="padding: 12px 5px; font-weight: 500; color: #dd6b20;">genetic</td>
+                                    <td style="padding: 12px 5px;"><span style="background-color: #c6f6d5; color: #22543d; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Analyzed</span></td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #edf2f7; color: #2d3748;">
+                                    <td style="padding: 12px 5px; font-family: monospace;">liver_102</td>
+                                    <td style="padding: 12px 5px;">Liam Neeson</td>
+                                    <td style="padding: 12px 5px;">Abdominal scan</td>
+                                    <td style="padding: 12px 5px; font-weight: 500; color: #e53e3e;">Malignant</td>
+                                    <td style="padding: 12px 5px;"><span style="background-color: #feebc8; color: #744210; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Flagged</span></td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #edf2f7; color: #2d3748;">
+                                    <td style="padding: 12px 5px; font-family: monospace;">neuro_002</td>
+                                    <td style="padding: 12px 5px;">Daniel Craig</td>
+                                    <td style="padding: 12px 5px;">Brain MRI (.png)</td>
+                                    <td style="padding: 12px 5px; font-weight: 500; color: #3182ce;">infectious</td>
+                                    <td style="padding: 12px 5px;"><span style="background-color: #fed7d7; color: #742a2a; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Urgent Alert</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    """)
+            
+            # SECTION 2: LOAD PATIENT & ANALYSIS
+            with gr.Column(visible=False) as load_patient_section:
+                with gr.Row():
+                    # Left side: Patient metadata and scan file upload
+                    with gr.Column(scale=1, elem_classes="card-container"):
+                        gr.Markdown("### 📥 Load Scan & Patient Details")
+                        patient_name_input = gr.Textbox(label="Patient Name", placeholder="Enter patient name...")
+                        patient_id_input = gr.Textbox(label="Patient ID", placeholder="Enter patient ID...")
+                        input_image = gr.File(
+                            file_types=[".png", ".jpg", ".jpeg", ".dcm"],
+                            label="Upload Scan (JPEG/PNG/DICOM)"
+                        )
+                        with gr.Row():
+                            analyze_btn = gr.Button("Analyse Scan", variant="primary")
+                            reset_btn = gr.Button("Reset", variant="secondary")
+                            
+                    # Right side: Visual workspace & RL outputs
+                    with gr.Column(scale=2, elem_classes="card-container"):
+                        gr.Markdown("### 👁️ Image Preprocessing Workspace")
+                        with gr.Row():
+                            original_display = gr.Image(label="Original Scan", interactive=False)
+                            processed_display = gr.Image(label="RL-Agent Preprocessed", interactive=False)
+                            
+                        with gr.Accordion("📋 RL Preprocessor Execution Logs", open=False):
+                            rl_logs_box = gr.Code(label="RL Steps & Metrics", language="markdown", interactive=False)
+                            
+                        gr.Markdown("### 🏷️ Classification Outputs")
+                        with gr.Row():
+                            lvl1_box = gr.Textbox(label="Level 1: Broad Category / Organ System", interactive=False)
+                            lvl2_box = gr.Textbox(label="Level 2: Specific Pathology / Diagnosis", interactive=False)
+                        with gr.Row():
+                            confidence_box = gr.Label(label="Confidence Score")
+                        with gr.Row():
+                            s3_url_box = gr.Textbox(label="S3 Cloud Storage Presigned URL", interactive=False, show_copy_button=True)
+                            
+            # SECTION 3: DOCTOR FEEDBACK LOOP (Clinical Review)
+            with gr.Column(visible=False) as clinical_review_section:
+                with gr.Column(elem_classes="card-container"):
+                    gr.Markdown("### 📋 Clinical Case Under Review")
+                    with gr.Row():
+                        review_patient_name = gr.Textbox(label="Patient Name", interactive=False)
+                        review_patient_id = gr.Textbox(label="Patient ID", interactive=False)
+                        review_doc_id = gr.Textbox(label="Session Document ID (MongoDB _id)", interactive=False)
+                        
+                with gr.Column(elem_classes="card-container"):
+                    gr.Markdown("### 💬 Clinical Correction & Feedback Loop")
+                    doctor_feedback_input = gr.Textbox(
+                        label="Doctor Feedback / Validation Notes", 
+                        placeholder="Enter clinical notes, validations, corrections, or follow-ups for permanent MongoDB logging...",
+                        lines=5
+                    )
+                    submit_feedback_btn = gr.Button("Submit Feedback", variant="primary")
+                    feedback_status = gr.Markdown(value="", container=True)
+                    
+            # SECTION 4: CLINICAL DIAGNOSIS & INTERPRETATION (Clinical Report)
+            with gr.Column(visible=False) as clinical_report_section:
+                with gr.Column(elem_classes="card-container"):
+                    gr.Markdown("### 📄 Clinical Justification & RAG Report")
+                    rag_output = gr.Markdown(value="*Awaiting scan analysis...*", container=True)
+
+    # Navigation Logic Functions
+    def navigate_to_overview():
+        return (
+            gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
+            gr.update(elem_classes="sidebar-nav-btn active-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn")
+        )
+
+    def navigate_to_load_patient():
+        return (
+            gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), gr.update(visible=False),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn active-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn")
+        )
+
+    def navigate_to_clinical_review():
+        return (
+            gr.update(visible=False), gr.update(visible=False), gr.update(visible=True), gr.update(visible=False),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn active-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn")
+        )
+
+    def navigate_to_clinical_report():
+        return (
+            gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="sidebar-nav-btn active-nav-btn")
+        )
+
+    # Wire up navigation triggers
+    nav_overview_btn.click(
+        fn=navigate_to_overview,
+        inputs=[],
+        outputs=[
+            overview_section, load_patient_section, clinical_review_section, clinical_report_section,
+            nav_overview_btn, nav_load_patient_btn, nav_clinical_review_btn, nav_clinical_report_btn
+        ]
+    )
+
+    nav_load_patient_btn.click(
+        fn=navigate_to_load_patient,
+        inputs=[],
+        outputs=[
+            overview_section, load_patient_section, clinical_review_section, clinical_report_section,
+            nav_overview_btn, nav_load_patient_btn, nav_clinical_review_btn, nav_clinical_report_btn
+        ]
+    )
+
+    nav_clinical_review_btn.click(
+        fn=navigate_to_clinical_review,
+        inputs=[],
+        outputs=[
+            overview_section, load_patient_section, clinical_review_section, clinical_report_section,
+            nav_overview_btn, nav_load_patient_btn, nav_clinical_review_btn, nav_clinical_report_btn
+        ]
+    )
+
+    nav_clinical_report_btn.click(
+        fn=navigate_to_clinical_report,
+        inputs=[],
+        outputs=[
+            overview_section, load_patient_section, clinical_review_section, clinical_report_section,
+            nav_overview_btn, nav_load_patient_btn, nav_clinical_review_btn, nav_clinical_report_btn
+        ]
+    )
+
+    # Reactive synchronization triggers between Load Patient tab and Clinical Review tab
+    patient_name_input.change(fn=lambda x: x, inputs=patient_name_input, outputs=review_patient_name)
+    patient_id_input.change(fn=lambda x: x, inputs=patient_id_input, outputs=review_patient_id)
+    current_doc_id.change(fn=lambda x: x, inputs=current_doc_id, outputs=review_doc_id)
 
     # Wire up Gradio triggers
     analyze_btn.click(
@@ -1603,6 +2082,12 @@ with gr.Blocks(**blocks_kwargs) as demo:
     )
 
 if __name__ == "__main__":
+    # Start background synchronization worker for offline fallback logging
+    try:
+        start_offline_sync_loop()
+    except Exception as sync_err:
+        print(f"[WARNING] Failed to start offline sync worker: {sync_err}")
+
     launch_kwargs = {"server_name": "0.0.0.0"}
     if theme_in_launch:
         launch_kwargs["theme"] = custom_theme
@@ -1612,6 +2097,7 @@ if __name__ == "__main__":
         target_port = base_port + port_offset
         try:
             launch_kwargs["server_port"] = target_port
+            demo.queue()
             demo.launch(**launch_kwargs)
             break
         except OSError as e:
