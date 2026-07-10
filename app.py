@@ -35,7 +35,6 @@ if sys.stderr and getattr(sys.stderr, 'encoding', None) != 'utf-8':
 import cv2
 import json
 import datetime
-import urllib.parse
 import numpy as np
 import torch
 import torch.nn as nn
@@ -543,17 +542,6 @@ def process_image_with_agent_and_hub(img, Q_table, hub, max_steps=2):
 # ==============================================================================
 # 5. PERSISTENT STORAGE (MONGODB INTEGRATION)
 # ==============================================================================
-def get_mongodb_connection():
-    mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-    try:
-        # Check connection with a brief timeout
-        client = pymongo.MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
-        client.admin.command('ping')
-        return client["NeuroScan_DB"], "Connected ✅"
-    except Exception as e:
-        print(f"⚠️ MongoDB Connection offline: {e}")
-        return None, "Offline ❌ (Inference active)"
-
 def upload_to_s3(file_path):
     """
     Uploads a file to an S3 bucket and returns the file URL.
@@ -631,22 +619,20 @@ def load_medical_image(file_path):
             return np.random.randint(0, 256, (224, 224, 3), dtype=np.uint8)
 
 def get_mongodb_connection():
-    # If the user has a MONGO_URI env var set, use it. Otherwise, use the Atlas cluster connection string.
-    username = "agentic_logs"
-    password = "Agentic_log@123"
-    escaped_username = urllib.parse.quote_plus(username)
-    escaped_password = urllib.parse.quote_plus(password)
-    default_atlas_uri = f"mongodb+srv://{escaped_username}:{escaped_password}@cluster0.a3jb3u6.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-    
-    mongo_uri = os.getenv("MONGO_URI", default_atlas_uri)
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        print("ℹ️ MONGO_URI not set — MongoDB logging disabled.")
+        return None, "Offline ❌ (Inference active)"
+
     try:
-        # Check connection with a brief timeout
         client = pymongo.MongoClient(mongo_uri, serverSelectionTimeoutMS=4000)
         client.admin.command('ping')
         return client["NeuroScan_DB"], "Connected ✅"
     except Exception as e:
         print(f"⚠️ MongoDB Connection offline: {e}")
         return None, "Offline ❌ (Inference active)"
+
+
 def log_agent_draft(db, status="Incomplete", step_logs=None, confidence=None, diagnosis=None, s3_url=None, patient_name=None, patient_id=None):
     if db is None:
         return None
@@ -1334,24 +1320,69 @@ def seed_vector_database(vector_db):
 # ==============================================================================
 # 9. INTEGRATED RUNNER PIPELINE FOR GRADIO
 # ==============================================================================
+def _model_search_roots():
+    roots = []
+    model_dir = os.getenv("MODEL_DIR")
+    if model_dir and os.path.isdir(model_dir):
+        roots.append(os.path.abspath(model_dir))
+    roots.extend([
+        os.path.abspath("models"),
+        os.path.abspath("specialist_models"),
+        os.path.abspath("."),
+        "/kaggle/input",
+    ])
+    seen = set()
+    unique_roots = []
+    for root in roots:
+        if root not in seen and os.path.isdir(root):
+            seen.add(root)
+            unique_roots.append(root)
+    return unique_roots
+
+
 def find_file(filename):
-    if os.path.exists(filename):
+    if os.path.isabs(filename) and os.path.exists(filename):
         return filename
-    # Search /kaggle/input
-    for root, dirs, files in os.walk('/kaggle/input'):
-        if filename in files:
-            return os.path.join(root, filename)
-    # Search recursively in the current workspace
-    for root, dirs, files in os.walk('.'):
-        if filename in files:
-            return os.path.join(root, filename)
+
+    for root in _model_search_roots():
+        direct = os.path.join(root, filename)
+        if os.path.exists(direct):
+            return direct
+
+    for root in _model_search_roots():
+        for walk_root, _, files in os.walk(root):
+            if filename in files:
+                return os.path.join(walk_root, filename)
     return None
 
+
+def find_qtable_file():
+    explicit = os.getenv("RL_QTABLE_PATH")
+    if explicit and os.path.exists(explicit):
+        return explicit
+
+    for candidate in ("rl_agent.json", "rl_training_metadata (1).json"):
+        found = find_file(candidate)
+        if found:
+            return found
+    return None
+
+
+def find_generalist_weights():
+    for candidate in (
+        "rlagent.pth",
+        "rlagent.wt",
+        "rl_agent_weights (1).pth",
+    ):
+        found = find_file(candidate)
+        if found:
+            return found
+    return None
+
+
 # Resolve model assets paths dynamically
-qtable_file = find_file('rl_agent.json')
-weights_file = find_file('rlagent.pth')
-if not weights_file:
-    weights_file = find_file('rlagent.wt')
+qtable_file = find_qtable_file()
+weights_file = find_generalist_weights()
 
 my_model_paths = {
     'generalist':    weights_file if weights_file else 'rlagent.wt',
@@ -1370,8 +1401,16 @@ if qtable_file and os.path.exists(qtable_file):
         with open(qtable_file, 'r') as f:
             data = json.load(f)
             Q_table = data.get("Q", {})
+        print(f"✓ Q-table loaded from: {qtable_file} ({len(Q_table)} states)")
     except Exception as e:
         print(f"Error loading Q-table: {e}")
+else:
+    print("⚠️ Q-table not found — RL preprocessing will use fallback heuristics only.")
+
+print(f"Model search roots: {_model_search_roots()}")
+for key, path in my_model_paths.items():
+    status = "✓" if os.path.exists(path) else "✗"
+    print(f"  [{status}] {key}: {path}")
 
 gen_classes = sorted([
     'Healthy', 'genetic', 'vascular', 'Benign',
@@ -1606,17 +1645,24 @@ if __name__ == "__main__":
     launch_kwargs = {"server_name": "0.0.0.0"}
     if theme_in_launch:
         launch_kwargs["theme"] = custom_theme
-        
-    base_port = 7860
-    for port_offset in range(10):
-        target_port = base_port + port_offset
-        try:
-            launch_kwargs["server_port"] = target_port
-            demo.launch(**launch_kwargs)
-            break
-        except OSError as e:
-            if "port" in str(e).lower() or "use" in str(e).lower():
-                print(f"[WARNING] Port {target_port} is busy. Trying port {target_port + 1}...")
-                continue
-            else:
+
+    root_path = os.getenv("GRADIO_ROOT_PATH")
+    if root_path:
+        launch_kwargs["root_path"] = root_path
+
+    if os.getenv("PORT"):
+        launch_kwargs["server_port"] = int(os.environ["PORT"])
+        demo.launch(**launch_kwargs)
+    else:
+        base_port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
+        for port_offset in range(10):
+            target_port = base_port + port_offset
+            try:
+                launch_kwargs["server_port"] = target_port
+                demo.launch(**launch_kwargs)
+                break
+            except OSError as e:
+                if "port" in str(e).lower() or "use" in str(e).lower():
+                    print(f"[WARNING] Port {target_port} is busy. Trying port {target_port + 1}...")
+                    continue
                 raise e

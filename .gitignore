@@ -4,4 +4,6 @@ __pycache__/
 .ipynb_checkpoints/
 
 *.wt
-
+models/*
+!models/.gitkeep
+!models/README.md
