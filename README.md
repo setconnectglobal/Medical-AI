@@ -111,6 +111,13 @@ See [.env.example](.env.example) for a copy-paste template.
 - [Architecture](docs/ARCHITECTURE.md) — Pipeline stages, class diagram, and integration points
 - [app.py Refactor Plan](docs/APP_PY_REFACTOR_PLAN.md) — Proposed module breakdown and migration phases
 
+## CI
+
+GitHub Actions runs on `main` and `temp`:
+
+- **test** — fast pytest (deployment assets, Q-table JSON, preprocessing smoke tests)
+- **docker-build** — validates the Railway Dockerfile builds successfully
+
 ## Branch
 
 Documentation was created on branch `temp` (local only; not pushed to GitHub).
