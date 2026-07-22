@@ -3,6 +3,13 @@
 # ==============================================================================
 import os
 import sys
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+warnings.filterwarnings("ignore", message=".*google.generativeai.*")
+import logging
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -1705,13 +1712,13 @@ custom_css = """
     background-color: #f8f9fa !important;
     border-right: 1px solid #e2e8f0 !important;
     padding: 20px 15px !important;
-    min-height: 800px !important;
+    min-height: 100vh !important;
 }
 
 .sidebar-title {
     font-size: 20px;
     font-weight: 800;
-    color: #2b6cb0;
+    color: #1A365D !important; /* Deep blue color */
     margin-bottom: 25px;
     text-align: center;
     padding-bottom: 15px;
@@ -1721,7 +1728,7 @@ custom_css = """
 .menu-header {
     font-size: 11px;
     font-weight: 700;
-    color: #a0aec0;
+    color: #4a5568 !important; /* Muted but visible black/gray */
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-bottom: 10px;
@@ -1734,9 +1741,9 @@ custom_css = """
     justify-content: flex-start !important;
     background-color: transparent !important;
     border: none !important;
-    color: #4a5568 !important;
+    color: #000000 !important; /* Visible black text */
     font-size: 15px !important;
-    font-weight: 500 !important;
+    font-weight: 600 !important;
     padding: 12px 16px !important;
     width: 100% !important;
     border-radius: 6px !important;
@@ -1748,7 +1755,7 @@ custom_css = """
 
 .sidebar-nav-btn:hover {
     background-color: #edf2f7 !important;
-    color: #2d3748 !important;
+    color: #000000 !important;
 }
 
 .active-nav-btn {
@@ -1771,6 +1778,44 @@ custom_css = """
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.05) !important;
     margin-bottom: 20px !important;
 }
+
+/* Remove default Gradio constraints to allow full page spread */
+.gradio-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Force dark/black text for readability */
+p, li, span, tr, td, th, h1, h2, h3, h4, h5, h6, label {
+    color: #000000 !important;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6,
+.prose p, .prose li, .prose span, .prose tr, .prose td, .prose th {
+    color: #000000 !important;
+}
+
+/* Form input labels and inside elements */
+label span, .block span, .block label, .block p, .label, .block-title, .title {
+    color: #000000 !important;
+    font-weight: 600 !important;
+}
+
+input, textarea, select {
+    color: #000000 !important;
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e0 !important;
+}
+
+/* Table header/cell styling */
+th {
+    border-bottom: 2px solid #cbd5e0 !important;
+    font-weight: bold !important;
+}
+td {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
 """
 
 blocks_kwargs = {"title": "NeuroScan Workstation", "css": custom_css}
@@ -1784,7 +1829,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
         # Sidebar menu
         with gr.Column(scale=1, elem_classes="sidebar-container"):
             gr.HTML("""
-                <div class="sidebar-title">🩺 SetConnect MedAI</div>
+                <div class="sidebar-title">🩺 Agentic MedicalAI</div>
                 <div class="menu-header">Main Menu</div>
             """)
             
@@ -1862,7 +1907,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
                         <h3 style="margin-top: 0; color: #2d3748; margin-bottom: 10px;">📋 Recent Patient Entries</h3>
                         <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 10px;">
                             <thead>
-                                <tr style="border-bottom: 2px solid #e2e8f0; color: #4a5568; font-weight: 600;">
+                                <tr style="border-bottom: 2px solid #cbd5e0; color: #000000; font-weight: 600;">
                                     <th style="padding: 10px 5px;">Patient ID</th>
                                     <th style="padding: 10px 5px;">Patient Name</th>
                                     <th style="padding: 10px 5px;">Scan Type</th>
@@ -1871,21 +1916,21 @@ with gr.Blocks(**blocks_kwargs) as demo:
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr style="border-bottom: 1px solid #edf2f7; color: #2d3748;">
+                                <tr style="border-bottom: 1px solid #e2e8f0; color: #000000;">
                                     <td style="padding: 12px 5px; font-family: monospace;">neuro_908</td>
                                     <td style="padding: 12px 5px;">Emma Watson</td>
                                     <td style="padding: 12px 5px;">Brain MRI (.dcm)</td>
                                     <td style="padding: 12px 5px; font-weight: 500; color: #dd6b20;">genetic</td>
                                     <td style="padding: 12px 5px;"><span style="background-color: #c6f6d5; color: #22543d; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Analyzed</span></td>
                                 </tr>
-                                <tr style="border-bottom: 1px solid #edf2f7; color: #2d3748;">
+                                <tr style="border-bottom: 1px solid #e2e8f0; color: #000000;">
                                     <td style="padding: 12px 5px; font-family: monospace;">liver_102</td>
                                     <td style="padding: 12px 5px;">Liam Neeson</td>
                                     <td style="padding: 12px 5px;">Abdominal scan</td>
                                     <td style="padding: 12px 5px; font-weight: 500; color: #e53e3e;">Malignant</td>
                                     <td style="padding: 12px 5px;"><span style="background-color: #feebc8; color: #744210; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Flagged</span></td>
                                 </tr>
-                                <tr style="border-bottom: 1px solid #edf2f7; color: #2d3748;">
+                                <tr style="border-bottom: 1px solid #e2e8f0; color: #000000;">
                                     <td style="padding: 12px 5px; font-family: monospace;">neuro_002</td>
                                     <td style="padding: 12px 5px;">Daniel Craig</td>
                                     <td style="padding: 12px 5px;">Brain MRI (.png)</td>
@@ -1934,11 +1979,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
             # SECTION 3: DOCTOR FEEDBACK LOOP (Clinical Review)
             with gr.Column(visible=False) as clinical_review_section:
                 with gr.Column(elem_classes="card-container"):
-                    gr.Markdown("### 📋 Clinical Case Under Review")
-                    with gr.Row():
-                        review_patient_name = gr.Textbox(label="Patient Name", interactive=False)
-                        review_patient_id = gr.Textbox(label="Patient ID", interactive=False)
-                        review_doc_id = gr.Textbox(label="Session Document ID (MongoDB _id)", interactive=False)
+                    review_case_display = gr.Markdown(value="### 📋 No patient scan has been analyzed yet in this session.\n*Go to **Load Patient** to start an analysis.*")
                         
                 with gr.Column(elem_classes="card-container"):
                     gr.Markdown("### 💬 Clinical Correction & Feedback Loop")
@@ -2031,9 +2072,18 @@ with gr.Blocks(**blocks_kwargs) as demo:
     )
 
     # Reactive synchronization triggers between Load Patient tab and Clinical Review tab
-    patient_name_input.change(fn=lambda x: x, inputs=patient_name_input, outputs=review_patient_name)
-    patient_id_input.change(fn=lambda x: x, inputs=patient_id_input, outputs=review_patient_id)
-    current_doc_id.change(fn=lambda x: x, inputs=current_doc_id, outputs=review_doc_id)
+    def update_review_context(name, pat_id, doc_id_val):
+        if not name and not pat_id:
+            return "### 📋 No patient scan has been analyzed yet in this session.\n*Go to **Load Patient** to start an analysis.*"
+        return f"""### 📋 Clinical Case Under Review
+*   **Patient Name**: **{name if name else 'Unknown'}**
+*   **Patient ID**: **{pat_id if pat_id else 'Unknown'}**
+*   **Session Document ID (MongoDB _id)**: `{doc_id_val if doc_id_val else 'Pending Background Upload...'}`
+"""
+
+    patient_name_input.change(fn=update_review_context, inputs=[patient_name_input, patient_id_input, current_doc_id], outputs=[review_case_display])
+    patient_id_input.change(fn=update_review_context, inputs=[patient_name_input, patient_id_input, current_doc_id], outputs=[review_case_display])
+    current_doc_id.change(fn=update_review_context, inputs=[patient_name_input, patient_id_input, current_doc_id], outputs=[review_case_display])
 
     # Wire up Gradio triggers
     analyze_btn.click(
