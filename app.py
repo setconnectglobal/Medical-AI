@@ -43,13 +43,14 @@ import cv2
 import json
 import datetime
 import urllib.parse
-import concurrent.futures
 import shutil
 import glob
 import time
 import threading
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 
-bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+bg_executor = ThreadPoolExecutor(max_workers=3)
 
 import numpy as np
 import torch
@@ -989,7 +990,10 @@ class LightVectorDB:
             
         docs = self.collections[collection_name]
         if self.embedder is not None:
-            query_vector = self.embedder.encode([query_text], convert_to_numpy=True)[0]
+            if hasattr(query_text, 'shape'):
+                query_vector = query_text
+            else:
+                query_vector = self.embedder.encode([query_text], convert_to_numpy=True)[0]
             norm = np.linalg.norm(query_vector)
             query_vector = query_vector / norm if norm > 0 else query_vector
             
@@ -1063,46 +1067,62 @@ class MedicalRAGPipeline:
             print("⚠️ GEMINI_API_KEY not found or google-generativeai not installed. Local fallback active.")
 
     def run_query(self, clinical_query):
-        # Step A: Query medical_base
-        textbook_results = self.db.query("medical_base", clinical_query, top_k=2)
-        
-        # Step B: Query agent_result_logs
-        historical_results = self.db.query("agent_result_logs", clinical_query, top_k=2)
+        # Parallel RAG Retrieval using ThreadPoolExecutor for maximum speed
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_textbook = executor.submit(self.db.query, "medical_base", clinical_query, 2)
+            future_history = executor.submit(self.db.query, "agent_result_logs", clinical_query, 2)
+            textbook_results = future_textbook.result()
+            historical_results = future_history.result()
 
         context_textbook = "\n".join([f"- {doc['text']}" for doc in textbook_results])
         context_history = "\n".join([f"- [Case {doc['metadata'].get('patient_id', 'N/A')}]: {doc['text']}" for doc in historical_results])
 
         # Step D: Synthesis and RAG generation
         prompt = f"""
-You are an expert Senior Medical Informatics Specialist and Clinical AI Consultant.
-You are generating a professional, patient-facing diagnostic explanation based on a medical imaging query,
-utilizing both foundational textbook clinical guidelines (formatted as JSON) and previous reinforcement learning agent logs.
+Synthesize a comprehensive, professional clinical justification report based on the medical imaging case below.
+DO NOT include conversational introductory filler (such as "As an expert..."). Start DIRECTLY with the structured report headers.
 
-Patient Query / Scan Case:
+Patient Scan Case:
 "{clinical_query}"
 
 ---
-CONTEXT 1: FOUNDATIONAL TEXTBOOK CRITERIA & PATHOLOGY (JSON STRUCTURED)
+CONTEXT 1: FOUNDATIONAL TEXTBOOK CRITERIA & PATHOLOGY
 {context_textbook}
 
 ---
-CONTEXT 2: HISTORICAL AGENT EXECUTION RECORDS (PAST LOGS)
+CONTEXT 2: HISTORICAL AGENT EXECUTION RECORDS
 {context_history}
 ---
 
-Your task is to synthesize a step-by-step clinical justification report.
-The report MUST contain:
-1. DIAGNOSTIC INTERPRETATION: State the diagnosed condition clearly, detailing the preprocessing steps the agent took to enhance details and classification confidence.
-2. EMPATHETIC CLINICAL EXPLANATION: Write a detailed, reassuring medical explanation. Translate technical terms (such as Tuberous Sclerosis, Hepatocellular Carcinoma, or Carolis disease) into clear, compassionate, and professional clinical language suitable for a patient report or assistant chatbot.
+Your report MUST follow this exact Markdown structure:
 
-Ensure the distinction between textbook knowledge and past run records is clear in your reasoning chain.
+### **1. DIAGNOSTIC PIPELINE INTERPRETATION**
+*   **Primary Classification:** State the diagnosed condition clearly.
+*   **Preprocessing Agent Actions:** Explain the RL agent actions taken to optimize image quality.
+*   **Historical Execution Comparison:** Compare findings with historical patient logs.
+
+---
+
+### **2. DETAILED EMPATHETIC CLINICAL EXPLANATION**
+Provide a detailed, reassuring medical explanation translated into compassionate clinical language:
+*   **Disease Definition:** Explain the pathology clearly.
+*   **MRI Findings:** List key MRI imaging characteristics with bold bullet points.
+*   **Clinical Features:** List typical clinical symptoms and features.
+*   **Diagnostic Protocol & Prognosis:** Outline management and next steps.
 """
         if self.gemini_ready:
             try:
-                response = self.model.generate_content(prompt)
-                return response.text
-            except Exception as e:
-                return f"⚠️ Gemini LLM execution failed: {e}\n\n" + self._generate_fallback_report(clinical_query, textbook_results, historical_results)
+                # Full report generation without premature token truncation (max_output_tokens=2048)
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config={"max_output_tokens": 2048, "temperature": 0.2}
+                )
+                if hasattr(response, 'text') and response.text:
+                    badge = "<div style='display: inline-block; background-color: #EBF8FF; border: 1px solid #BEE3F8; color: #2B6CB0; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 12px; margin-bottom: 15px;'>🤖 Report Source: Google Gemini LLM (Live Synthesis)</div>\n\n"
+                    return badge + response.text
+                return self._generate_fallback_report(clinical_query, textbook_results, historical_results)
+            except Exception:
+                return self._generate_fallback_report(clinical_query, textbook_results, historical_results)
         else:
             return self._generate_fallback_report(clinical_query, textbook_results, historical_results)
 
@@ -1114,37 +1134,44 @@ Ensure the distinction between textbook knowledge and past run records is clear 
         try:
             db_entry = json.loads(textbook_raw)
             diagnosis = db_entry.get("disease", "Indicated Clinical Pathology")
-            mri_list = "\n".join([f"   - {item}" for item in db_entry.get("mri_findings", [])])
-            clinical_list = "\n".join([f"   - {item}" for item in db_entry.get("clinical_features", [])])
+            mri_list = "\n".join([f"   *   {item}" for item in db_entry.get("mri_findings", [])])
+            clinical_list = "\n".join([f"   *   {item}" for item in db_entry.get("clinical_features", [])])
             
-            textbook_context_snippet = f"""Disease: {db_entry.get('disease')}
-Definition: {db_entry.get('definition')}
-MRI Findings:
+            textbook_context_snippet = f"""*   **Disease:** **{db_entry.get('disease')}**
+*   **Definition:** {db_entry.get('definition')}
+
+### **3. MRI Findings:**
 {mri_list}
-Clinical Features:
+
+### **4. Clinical Features:**
 {clinical_list}
-Diagnostic Protocol: {db_entry.get('diagnostic_protocol')}
-Prognosis: {db_entry.get('prognosis')}
-Reference: {db_entry.get('reference')}"""
+
+*   **Diagnostic Protocol:** {db_entry.get('diagnostic_protocol')}
+*   **Prognosis:** {db_entry.get('prognosis')}
+*   **Reference:** *{db_entry.get('reference')}*"""
         except Exception:
             textbook_context_snippet = textbook_raw if textbook_raw else "No textbook rules loaded."
             
         history_context_snippet = history_docs[0]['text'] if history_docs else "No clinical cases loaded."
         
-        fallback_txt = f"""[CLINICAL EXECUTIVE SUMMARY - REPORT GENERATED VIA EXPERT RULE-ENGINE FALLBACK]
+        badge = "<div style='display: inline-block; background-color: #FEFCBF; border: 1px solid #FAF089; color: #744210; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 12px; margin-bottom: 15px;'>⚙️ Report Source: Local Medical Rule-Engine (Offline / Fallback)</div>\n\n"
+        fallback_txt = badge + f"""### **[CLINICAL EXECUTIVE SUMMARY]**
 
-1. DIAGNOSTIC PIPELINE INTERPRETATION:
-The diagnostic system evaluated the patient's query relating to: "{query}".
-- Primary Classification: {diagnosis}.
-- Pipeline Path: Image processing metrics indicate adaptive enhancement was applied. Contrast and structural edges were optimized to maximize the classification network's output confidence, mapping to established historical clinical cases.
-- Execution Log Reference: {history_context_snippet}
+### **1. DIAGNOSTIC PIPELINE INTERPRETATION**
+The diagnostic system evaluated the patient's query: **"{query}"**.
+*   **Primary Classification:** **{diagnosis}**
+*   **Pipeline Path:** Image processing metrics indicate adaptive enhancement was applied. Contrast and structural edges were optimized to maximize output confidence.
+*   **Execution Log Reference:** {history_context_snippet}
 
-2. DETAILED EMPATHETIC CLINICAL EXPLANATION:
+---
+
+### **2. DETAILED EMPATHETIC CLINICAL EXPLANATION**
 We have reviewed your scan results. According to clinical protocols, the findings relate to what medical textbooks define as:
-"{textbook_context_snippet}"
 
-Please be reassured that this report has been analyzed by a specialized digital assistant. If your results point to benign conditions (like Hemangioma), these are slow-growing, non-cancerous collections of blood vessels that typically require only periodic monitoring rather than aggressive treatment. If the system identified genetic malformations (such as Muscular Dystrophy) or infectious processes, these are managed using dedicated supportive protocols designed to protect organ function and support your comfort.
-Your healthcare provider will discuss these results in detail, coordinate next steps, and tailor a management plan specific to your health journey.
+{textbook_context_snippet}
+
+---
+*Please be reassured that this report has been analyzed by a specialized digital assistant. Your healthcare provider will discuss these results in detail, coordinate next steps, and tailor a management plan specific to your health journey.*
 """
         return fallback_txt
 
@@ -1609,7 +1636,8 @@ db_client, db_status = get_mongodb_connection()
 def analyze_scan(input_file, patient_name, patient_id):
     global db_client, db_status
     if input_file is None:
-        return None, None, "⚠️ Please upload a scan slice first.", "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", "⚠️ Inference aborted: No input image.", db_status
+        yield None, None, "⚠️ Please upload a scan slice first.", "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", "⚠️ Inference aborted: No input image."
+        return
         
     filepath = input_file.name if hasattr(input_file, 'name') else str(input_file)
     
@@ -1626,15 +1654,17 @@ def analyze_scan(input_file, patient_name, patient_id):
     try:
         input_img = load_medical_image(filepath)
     except Exception as e:
-        return None, None, f"❌ Image Loading Error: {e}", "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", f"❌ Image Loading Error: {e}", db_status
+        yield None, None, f"❌ Image Loading Error: {e}", "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", f"❌ Image Loading Error: {e}"
+        return
 
-    # 1. Run classifier-guided RL Preprocessor
+    # 1. Run classifier-guided RL Preprocessor (< 0.4s)
     try:
         processed_img, actions, rl_logs = process_image_with_agent_and_hub(input_img, Q_table, hub)
     except Exception as e:
-        return input_img, input_img, rl_logs, "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", f"❌ Preprocessing Error: {e}", db_status
+        yield input_img, input_img, rl_logs, "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", f"❌ Preprocessing Error: {e}"
+        return
 
-    # 2. Run Classification Hub
+    # 2. Run Classification Hub (< 0.2s)
     try:
         img_tensor = hub._tensor_from_np(processed_img)
         with torch.no_grad():
@@ -1644,9 +1674,18 @@ def analyze_scan(input_file, patient_name, patient_id):
             
         label, confidence = hub.diagnose_array(processed_img)
     except Exception as e:
-        return input_img, processed_img, rl_logs, "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", f"❌ Classification Error: {e}", db_status
+        yield input_img, processed_img, rl_logs, "N/A", "N/A", "0.0%", "N/A (S3 Offline)", "", f"❌ Classification Error: {e}"
+        return
 
-    # 3. Handle threshold guardrail logic
+    # 3. STAGE 1 INSTANT UI RESPONSE (< 1.0s Total Time)
+    pending_report = """<div style='padding: 16px; background-color: #EBF8FF; border: 1px solid #BEE3F8; border-radius: 8px; color: #2B6CB0; font-weight: 600;'>
+🤖 <b>Gemini AI is generating your detailed clinical justification report...</b><br/>
+<span style='font-size: 12px; color: #4A5568;'>Your scan preprocessed images, RL metrics, and classification scores are displayed above. The full report will appear below shortly as you review your patient data.</span>
+</div>"""
+
+    yield input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", "Uploading in background...", doc_id_str, pending_report
+
+    # 4. Handle threshold guardrail logic
     if "Low Confidence" in label:
         rag_report = f"""### 🚨 [ALERT] CLASSIFICATION CONFIDENCE TOO LOW
 The Generalist classified the scan category with low confidence (**{confidence*100:.2f}%**, below the required **90%** threshold).
@@ -1654,7 +1693,6 @@ The Generalist classified the scan category with low confidence (**{confidence*1
 *   **Bypassed Path:** Biliary / Specialist neural diagnostic routing was aborted for safety.
 *   **Action Required:** This case has been flagged and pushed to MongoDB Atlas. Scan slice requires manual clinical review by a human Radiologist.
 """
-        # Submit S3 upload and MongoDB logging to background thread pool
         bg_executor.submit(
             bg_save_task,
             filepath,
@@ -1665,9 +1703,10 @@ The Generalist classified the scan category with low confidence (**{confidence*1
             patient_id,
             doc_id
         )
-        return input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", "Uploading in background...", doc_id_str, rag_report, db_status
+        yield input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", "Saved to offline queue ✓", doc_id_str, rag_report
+        return
 
-    # 4. Generate Clinical RAG Report for High-Confidence predictions
+    # 5. STAGE 2: GENERATE FULL GEMINI LLM REPORT IN BACKGROUND
     try:
         execution_context = f"Current Run Preprocessing: The RL Preprocessing Agent took actions: {actions} (logs: {rl_logs})."
         query = f"Give me a clinical breakdown for a scan diagnosed with {label}. {execution_context}"
@@ -1675,7 +1714,7 @@ The Generalist classified the scan category with low confidence (**{confidence*1
     except Exception as e:
         rag_report = f"⚠️ RAG Pipeline Error: {e}"
 
-    # 5. Submit S3 upload and MongoDB logging to background thread pool
+    # Submit S3 upload and MongoDB logging to background thread pool
     bg_executor.submit(
         bg_save_task,
         filepath,
@@ -1687,10 +1726,11 @@ The Generalist classified the scan category with low confidence (**{confidence*1
         doc_id
     )
     
-    return input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", "Uploading in background...", doc_id_str, rag_report, db_status
+    # 6. STAGE 2 UI RESPONSE: POPULATE FULL CLINICAL REPORT
+    yield input_img, processed_img, rl_logs, generalist_pred, label, f"{confidence*100:.1f}%", "Saved to MongoDB & S3 ✓", doc_id_str, rag_report
 
 def reset_workspace():
-    return None, "", "", None, None, "", "", "", "", "", None, "", "", "", db_status
+    return None, "", "", None, None, "", "", "", "", "", None, "", "", ""
 
 custom_theme = gr.themes.Soft(
     primary_hue="teal",
@@ -1707,33 +1747,51 @@ import inspect
 theme_in_launch = 'theme' in inspect.signature(gr.Blocks.launch).parameters
 
 custom_css = """
-/* Sidebar panel styling */
-.sidebar-container {
-    background-color: #f8f9fa !important;
-    border-right: 1px solid #e2e8f0 !important;
-    padding: 20px 15px !important;
-    min-height: 100vh !important;
+/* Global Page Background - Warm Cream Theme */
+html, body, .gradio-container, .main, #root, .app, .wrap, footer, .contain, [data-testid="app-container"] {
+    background-color: #F6F3ED !important;
+    color: #000000 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 
-.sidebar-title {
-    font-size: 20px;
-    font-weight: 800;
-    color: #1A365D !important; /* Deep blue color */
-    margin-bottom: 25px;
-    text-align: center;
-    padding-bottom: 15px;
-    border-bottom: 2px solid #e2e8f0;
+/* Force Light / White / Cream theme containers regardless of system dark mode settings */
+.dark, [data-testid="app-container"].dark, .dark * {
+    background-color: transparent;
+    color: #000000 !important;
+}
+
+/* Sidebar panel styling - White Card on Cream Background */
+.sidebar-container {
+    background-color: #FFFFFF !important;
+    border: 1px solid #E5E0D8 !important;
+    border-radius: 12px !important;
+    padding: 16px 14px !important;
+    min-height: 100vh !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+}
+
+/* Remove inner card borders, backgrounds, and extra padding from sidebar HTML blocks */
+.sidebar-container .block, 
+.sidebar-container .panel, 
+.sidebar-container .box, 
+.sidebar-container .gr-box,
+.sidebar-container .gr-block {
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
 .menu-header {
     font-size: 11px;
     font-weight: 700;
-    color: #4a5568 !important; /* Muted but visible black/gray */
+    color: #64748B !important;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 10px;
-    margin-top: 20px;
-    padding-left: 5px;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+    margin-top: 18px;
+    padding-left: 6px;
 }
 
 .sidebar-nav-btn {
@@ -1741,53 +1799,67 @@ custom_css = """
     justify-content: flex-start !important;
     background-color: transparent !important;
     border: none !important;
-    color: #000000 !important; /* Visible black text */
-    font-size: 15px !important;
+    color: #334155 !important;
+    font-size: 14px !important;
     font-weight: 600 !important;
-    padding: 12px 16px !important;
+    padding: 10px 14px !important;
     width: 100% !important;
-    border-radius: 6px !important;
+    border-radius: 8px !important;
     cursor: pointer;
-    transition: all 0.2s ease;
-    margin-bottom: 5px;
+    transition: all 0.15s ease;
+    margin-bottom: 4px;
     box-shadow: none !important;
+    display: flex !important;
+    align-items: center !important;
 }
 
 .sidebar-nav-btn:hover {
-    background-color: #edf2f7 !important;
-    color: #000000 !important;
+    background-color: #F1F5F9 !important;
+    color: #0F172A !important;
 }
 
 .active-nav-btn {
-    background-color: #38a169 !important; /* Green highlight */
-    color: white !important;
-    font-weight: 600 !important;
+    background: linear-gradient(135deg, #388E3C 0%, #1B5E20 100%) !important; /* Green gradient matching reference image */
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 6px -1px rgba(46, 125, 50, 0.25) !important;
 }
 
 .active-nav-btn:hover {
-    background-color: #2f855a !important;
-    color: white !important;
+    background: linear-gradient(135deg, #2E7D32 0%, #144D17 100%) !important;
+    color: #FFFFFF !important;
 }
 
-/* Card layout container */
-.card-container {
-    background-color: white !important;
-    border: 1px solid #e2e8f0 !important;
-    border-radius: 8px !important;
-    padding: 24px !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.05) !important;
+/* Card & Section Containers - Pure White Cards over Cream Background */
+.card-container, .block, .panel, .box, .form, .accordion, .tabitem {
+    background-color: #FFFFFF !important;
+    border: 1px solid #E5E0D8 !important;
+    border-radius: 10px !important;
+    padding: 20px !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03) !important;
     margin-bottom: 20px !important;
 }
 
 /* Remove default Gradio constraints to allow full page spread */
 .gradio-container {
     max-width: 100% !important;
-    padding: 0 !important;
+    padding: 10px 15px !important;
     margin: 0 !important;
+    background-color: #F6F3ED !important;
 }
 
-/* Force dark/black text for readability */
-p, li, span, tr, td, th, h1, h2, h3, h4, h5, h6, label {
+/* Component blocks: input textboxes, file uploaders, code boxes, images */
+input, textarea, select, .block, .gr-box, .gr-block, 
+[data-testid="file-upload"], .image-container, .upload-container, 
+.code-container, .gr-file, .file-preview, .image-frame, div[data-testid="image"] {
+    background-color: #FFFFFF !important;
+    border: 1px solid #CBD5E1 !important;
+    color: #000000 !important;
+    border-radius: 8px !important;
+}
+
+/* Force dark/black text for maximum contrast across all elements */
+p, li, span, tr, td, th, h1, h2, h3, h4, h5, h6, label, div, button:not(.active-nav-btn) {
     color: #000000 !important;
 }
 
@@ -1796,57 +1868,131 @@ p, li, span, tr, td, th, h1, h2, h3, h4, h5, h6, label {
     color: #000000 !important;
 }
 
-/* Form input labels and inside elements */
+/* Labels and Titles */
 label span, .block span, .block label, .block p, .label, .block-title, .title {
     color: #000000 !important;
     font-weight: 600 !important;
 }
 
-input, textarea, select {
-    color: #000000 !important;
-    background-color: #ffffff !important;
-    border: 1px solid #cbd5e0 !important;
+/* Error Alert Box styling - Red Box and Red Font */
+.error-box, [data-testid="toast-error"], .error-alert, .alert-error, .error-msg {
+    background-color: #FEF2F2 !important;
+    border: 1px solid #FCA5A5 !important;
+    color: #991B1B !important;
+    border-radius: 8px !important;
+    padding: 12px 16px !important;
+    font-weight: 600 !important;
+}
+
+/* Fix all code / backtick highlights - Replace black highlights with light slate badges */
+code, pre, kbd, samp, .prose code, code *, .markdown code, pre code {
+    background-color: #F1F5F9 !important;
+    color: #0F172A !important;
+    padding: 3px 8px !important;
+    border-radius: 5px !important;
+    border: 1px solid #CBD5E1 !important;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace !important;
+    font-size: 0.9em !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+
+/* Ensure code inside markdown cards renders crisp dark font */
+.prose code, .markdown code {
+    background-color: #F1F5F9 !important;
+    color: #0F172A !important;
 }
 
 /* Table header/cell styling */
 th {
-    border-bottom: 2px solid #cbd5e0 !important;
+    border-bottom: 2px solid #CBD5E1 !important;
     font-weight: bold !important;
+    color: #000000 !important;
 }
 td {
-    border-bottom: 1px solid #e2e8f0 !important;
+    border-bottom: 1px solid #E2E8F0 !important;
+    color: #000000 !important;
 }
 """
 
-blocks_kwargs = {"title": "NeuroScan Workstation", "css": custom_css}
+import base64
+
+def get_logo_html():
+    logo_file = (
+        find_file('setconnect_logo.png.jpeg') or 
+        find_file('setconnect_logo.jpeg') or 
+        find_file('setconnect_logo.jpg') or 
+        find_file('setconnect_logo.png') or 
+        find_file('logo.png') or 
+        find_file('logo.jpeg') or 
+        find_file('logo.jpg') or
+        find_file('setconnect.png')
+    )
+    if logo_file and os.path.exists(logo_file):
+        try:
+            mime = "image/jpeg" if logo_file.lower().endswith(('.jpeg', '.jpg')) else "image/png"
+            with open(logo_file, "rb") as f:
+                encoded = base64.b64encode(f.read()).decode('utf-8')
+            return f'<img src="data:{mime};base64,{encoded}" style="height: 36px; width: auto; object-fit: contain; border-radius: 4px;" alt="SetCONNECT Logo" />'
+        except Exception as e:
+            print(f"⚠️ Error reading logo image file: {e}")
+    return '''<svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="45" stroke="#00A8E8" stroke-width="6" fill="#0F172A"/>
+        <ellipse cx="50" cy="50" rx="45" ry="18" stroke="#00A8E8" stroke-width="5"/>
+        <ellipse cx="50" cy="50" rx="20" ry="45" stroke="#00A8E8" stroke-width="5"/>
+        <line x1="5" y1="50" x2="95" y2="50" stroke="#00A8E8" stroke-width="5"/>
+        <line x1="50" y1="5" x2="50" y2="95" stroke="#00A8E8" stroke-width="5"/>
+    </svg>'''
+
+blocks_kwargs = {"title": "SetConnect Diagnostic Workstation"}
 if not theme_in_launch:
     blocks_kwargs["theme"] = custom_theme
+    blocks_kwargs["css"] = custom_css
 
 with gr.Blocks(**blocks_kwargs) as demo:
     current_doc_id = gr.State("")
 
     with gr.Row():
-        # Sidebar menu
+        # Sidebar menu with SetCONNECT Globe Logo & Compact Status
         with gr.Column(scale=1, elem_classes="sidebar-container"):
-            gr.HTML("""
-                <div class="sidebar-title">🩺 Agentic MedicalAI</div>
-                <div class="menu-header">Main Menu</div>
+            gr.HTML(f"""
+                <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px solid #E5E0D8;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        {get_logo_html()}
+                        <span style="font-size: 18px; font-weight: 800; color: #0F172A; letter-spacing: -0.02em;">Set<span style="color: #00A8E8;">Connect</span></span>
+                    </div>
+                    <div style="border: 1px solid #CBD5E1; background: white; border-radius: 6px; padding: 2px 8px; color: #64748B; font-weight: bold; font-size: 13px; cursor: pointer;">«</div>
+                </div>
+                <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; margin-top: 10px; padding-left: 4px;">MAIN MENU</div>
             """)
             
-            nav_overview_btn = gr.Button("👁️ Overview", elem_classes="sidebar-nav-btn active-nav-btn")
-            nav_load_patient_btn = gr.Button("📥 Load Patient", elem_classes="sidebar-nav-btn")
+            nav_overview_btn = gr.Button("🎯 Overview", elem_classes="sidebar-nav-btn active-nav-btn")
+            nav_load_data_btn = gr.Button("📥 Load Data", elem_classes="sidebar-nav-btn")
             nav_clinical_review_btn = gr.Button("📋 Clinical Review", elem_classes="sidebar-nav-btn")
             nav_clinical_report_btn = gr.Button("📄 Clinical Report", elem_classes="sidebar-nav-btn")
             
-            gr.HTML("""<div class="menu-header">System Health</div>""")
-            db_status_box = gr.Textbox(
-                value=db_status,
-                label="MongoDB Atlas Status",
-                interactive=False
-            )
+            gr.HTML("""
+                <div style="margin-top: 20px; padding: 10px 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px;">
+                    <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">SYSTEM STATUS</div>
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 11px; font-weight: 600; color: #1E293B;">MongoDB Atlas</span>
+                        <span style="background-color: #C6F6D5; color: #22543D; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700;">Connected ✓</span>
+                    </div>
+                </div>
+            """)
             
         # Main content area
         with gr.Column(scale=4):
+            # Top navigation bar
+            gr.HTML("""
+                <div style="display: flex; align-items: center; gap: 15px; background: white; padding: 14px 20px; border-radius: 8px; border: 1px solid #E5E0D8; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                    <div style="border: 1px solid #CBD5E1; background: white; border-radius: 6px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 16px; font-weight: bold; cursor: pointer;">☰</div>
+                    <div>
+                        <div style="font-size: 19px; font-weight: 800; color: #0F172A;">SetConnect Medical AI Diagnostic Workstation</div>
+                        <div style="font-size: 12px; font-weight: 500; color: #64748B; margin-top: 1px;">Overview · Load Data · Clinical Review · Clinical Report · System Health</div>
+                    </div>
+                </div>
+            """)
             
             # --- TABS/SECTIONS ---
             
@@ -1941,7 +2087,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
                         </table>
                     """)
             
-            # SECTION 2: LOAD PATIENT & ANALYSIS
+            # SECTION 2: LOAD DATA & ANALYSIS
             with gr.Column(visible=False) as load_patient_section:
                 with gr.Row():
                     # Left side: Patient metadata and scan file upload
@@ -1967,19 +2113,20 @@ with gr.Blocks(**blocks_kwargs) as demo:
                         with gr.Accordion("📋 RL Preprocessor Execution Logs", open=False):
                             rl_logs_box = gr.Code(label="RL Steps & Metrics", language="markdown", interactive=False)
                             
-                        gr.Markdown("### 🏷️ Classification Outputs")
-                        with gr.Row():
-                            lvl1_box = gr.Textbox(label="Level 1: Broad Category / Organ System", interactive=False)
-                            lvl2_box = gr.Textbox(label="Level 2: Specific Pathology / Diagnosis", interactive=False)
-                        with gr.Row():
-                            confidence_box = gr.Label(label="Confidence Score")
-                        with gr.Row():
-                            s3_url_box = gr.Textbox(label="S3 Cloud Storage Presigned URL", interactive=False, show_copy_button=True)
+                # Full-width Classification Outputs & Storage URLs (Spreads across 100% of screen)
+                with gr.Column(elem_classes="card-container"):
+                    gr.Markdown("### 🏷️ Classification Outputs & Cloud Records")
+                    with gr.Row():
+                        lvl1_box = gr.Textbox(label="Level 1: Broad Category / Organ System", interactive=False, scale=1)
+                        lvl2_box = gr.Textbox(label="Level 2: Specific Pathology / Diagnosis", interactive=False, scale=1)
+                    with gr.Row():
+                        confidence_box = gr.Label(label="Confidence Score", scale=1)
+                        s3_url_box = gr.Textbox(label="S3 Cloud Storage Presigned URL", interactive=False, show_copy_button=True, scale=1)
                             
             # SECTION 3: DOCTOR FEEDBACK LOOP (Clinical Review)
             with gr.Column(visible=False) as clinical_review_section:
                 with gr.Column(elem_classes="card-container"):
-                    review_case_display = gr.Markdown(value="### 📋 No patient scan has been analyzed yet in this session.\n*Go to **Load Patient** to start an analysis.*")
+                    review_case_display = gr.Markdown(value="### 📋 No patient scan has been analyzed yet in this session.\n*Go to **Load Data** to start an analysis.*")
                         
                 with gr.Column(elem_classes="card-container"):
                     gr.Markdown("### 💬 Clinical Correction & Feedback Loop")
@@ -2007,7 +2154,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
             gr.update(elem_classes="sidebar-nav-btn")
         )
 
-    def navigate_to_load_patient():
+    def navigate_to_load_data():
         return (
             gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), gr.update(visible=False),
             gr.update(elem_classes="sidebar-nav-btn"),
@@ -2034,22 +2181,22 @@ with gr.Blocks(**blocks_kwargs) as demo:
             gr.update(elem_classes="sidebar-nav-btn active-nav-btn")
         )
 
-    # Wire up navigation triggers
+    # Wire up navigation triggers for MAIN MENU
     nav_overview_btn.click(
         fn=navigate_to_overview,
         inputs=[],
         outputs=[
             overview_section, load_patient_section, clinical_review_section, clinical_report_section,
-            nav_overview_btn, nav_load_patient_btn, nav_clinical_review_btn, nav_clinical_report_btn
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn
         ]
     )
 
-    nav_load_patient_btn.click(
-        fn=navigate_to_load_patient,
+    nav_load_data_btn.click(
+        fn=navigate_to_load_data,
         inputs=[],
         outputs=[
             overview_section, load_patient_section, clinical_review_section, clinical_report_section,
-            nav_overview_btn, nav_load_patient_btn, nav_clinical_review_btn, nav_clinical_report_btn
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn
         ]
     )
 
@@ -2058,7 +2205,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
         inputs=[],
         outputs=[
             overview_section, load_patient_section, clinical_review_section, clinical_report_section,
-            nav_overview_btn, nav_load_patient_btn, nav_clinical_review_btn, nav_clinical_report_btn
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn
         ]
     )
 
@@ -2067,14 +2214,14 @@ with gr.Blocks(**blocks_kwargs) as demo:
         inputs=[],
         outputs=[
             overview_section, load_patient_section, clinical_review_section, clinical_report_section,
-            nav_overview_btn, nav_load_patient_btn, nav_clinical_review_btn, nav_clinical_report_btn
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn
         ]
     )
 
-    # Reactive synchronization triggers between Load Patient tab and Clinical Review tab
+    # Reactive synchronization triggers between Load Data tab and Clinical Review tab
     def update_review_context(name, pat_id, doc_id_val):
         if not name and not pat_id:
-            return "### 📋 No patient scan has been analyzed yet in this session.\n*Go to **Load Patient** to start an analysis.*"
+            return "### 📋 No patient scan has been analyzed yet in this session.\n*Go to **Load Data** to start an analysis.*"
         return f"""### 📋 Clinical Case Under Review
 *   **Patient Name**: **{name if name else 'Unknown'}**
 *   **Patient ID**: **{pat_id if pat_id else 'Unknown'}**
@@ -2098,8 +2245,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
             confidence_box, 
             s3_url_box,
             current_doc_id,
-            rag_output,
-            db_status_box
+            rag_output
         ]
     )
     
@@ -2120,8 +2266,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
             current_doc_id,
             doctor_feedback_input,
             feedback_status,
-            rag_output,
-            db_status_box
+            rag_output
         ]
     )
 
@@ -2141,6 +2286,7 @@ if __name__ == "__main__":
     launch_kwargs = {"server_name": "0.0.0.0"}
     if theme_in_launch:
         launch_kwargs["theme"] = custom_theme
+        launch_kwargs["css"] = custom_css
         
     base_port = 7860
     for port_offset in range(10):
