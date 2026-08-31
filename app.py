@@ -1733,12 +1733,22 @@ def reset_workspace():
     return None, "", "", None, None, "", "", "", "", "", None, "", "", ""
 
 custom_theme = gr.themes.Soft(
-    primary_hue="teal",
+    primary_hue="blue",
     secondary_hue="slate",
     neutral_hue="slate"
 ).set(
-    button_primary_background_fill="*primary_500",
-    button_primary_background_fill_hover="*primary_600",
+    body_background_fill="#EEF2F9",
+    body_text_color="#0F172A",
+    body_text_color_subdued="#64748B",
+    background_fill_primary="#FFFFFF",
+    background_fill_secondary="#F8FAFC",
+    block_background_fill="#FFFFFF",
+    block_border_color="#E2E8F0",
+    block_title_text_color="#0F172A",
+    input_background_fill="#FFFFFF",
+    input_border_color="#CBD5E1",
+    button_primary_background_fill="#2563EB",
+    button_primary_background_fill_hover="#1D4ED8",
     block_title_text_weight="bold",
     block_border_width="1px"
 )
@@ -1747,30 +1757,90 @@ import inspect
 theme_in_launch = 'theme' in inspect.signature(gr.Blocks.launch).parameters
 
 custom_css = """
-/* Global Page Background - Warm Cream Theme */
-html, body, .gradio-container, .main, #root, .app, .wrap, footer, .contain, [data-testid="app-container"] {
-    background-color: #F6F3ED !important;
-    color: #000000 !important;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+/* ==============================================================================
+   FORCE SETCONNECT LIGHT THEME & FIXED LAYOUT ANCHORING
+   ============================================================================== */
+
+/* Reset Gradio Dark Theme Variables */
+:root, .dark, body.dark, [data-testid="app-container"].dark, [data-theme="dark"] {
+    --body-background-fill: #EEF2F9 !important;
+    --body-text-color: #0F172A !important;
+    --body-text-color-subdued: #64748B !important;
+    --background-fill-primary: #FFFFFF !important;
+    --background-fill-secondary: #F8FAFC !important;
+    --block-background-fill: #FFFFFF !important;
+    --block-border-color: #E2E8F0 !important;
+    --block-title-text-color: #0F172A !important;
+    --block-label-background-fill: #F1F5F9 !important;
+    --block-label-text-color: #0F172A !important;
+    --input-background-fill: #FFFFFF !important;
+    --input-border-color: #CBD5E1 !important;
+    --button-primary-background-fill: #2563EB !important;
+    --button-primary-text-color: #FFFFFF !important;
+    --button-secondary-background-fill: #F1F5F9 !important;
+    --button-secondary-text-color: #334155 !important;
 }
 
-/* Force Light / White / Cream theme containers regardless of system dark mode settings */
-.dark, [data-testid="app-container"].dark, .dark * {
-    background-color: transparent;
-    color: #000000 !important;
+/* Global Page Background & Grid Texture */
+html, body, .gradio-container, .main, #root, .app, .wrap, footer, .contain, [data-testid="app-container"], .dark {
+    background-color: #EEF2F9 !important;
+    background-image: radial-gradient(#CBD5E1 0.75px, transparent 0.75px), radial-gradient(#CBD5E1 0.75px, #EEF2F9 0.75px) !important;
+    background-size: 24px 24px !important;
+    background-position: 0 0, 12px 12px !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", "Inter", "Segoe UI", Roboto, sans-serif !important;
+    color: #0F172A !important;
 }
 
-/* Sidebar panel styling - White Card on Cream Background */
-.sidebar-container {
-    background-color: #FFFFFF !important;
-    border: 1px solid #E5E0D8 !important;
-    border-radius: 12px !important;
-    padding: 16px 14px !important;
-    min-height: 100vh !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+.gradio-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
-/* Remove inner card borders, backgrounds, and extra padding from sidebar HTML blocks */
+/* Fix outer layout while preserving horizontal flexbox for inner rows */
+.gradio-container > .main > .wrap > .row,
+.gradio-container > .contain > .row {
+    display: block !important;
+    width: 100% !important;
+}
+
+/* Restore Horizontal Flexbox for Tab Row & Card Rows */
+.row, .gr-row, [data-testid="row"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 12px !important;
+    width: 100% !important;
+}
+
+/* 1. FIXED LEFT SIDEBAR - Hard-locked 260px Width, Z-Index 10000 */
+.sidebar-container,
+[data-testid="column"].sidebar-container {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 260px !important;
+    min-width: 260px !important;
+    max-width: 260px !important;
+    flex: 0 0 260px !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important; /* NO SCROLLBAR */
+    z-index: 10000 !important;
+    background: #0B0F19 !important;
+    border-right: 1px solid #1E293B !important;
+    padding: 14px 12px !important;
+    box-sizing: border-box !important;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.15) !important;
+}
+
+.sidebar-container::-webkit-scrollbar,
+.sidebar-container *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
 .sidebar-container .block, 
 .sidebar-container .panel, 
 .sidebar-container .box, 
@@ -1783,135 +1853,237 @@ html, body, .gradio-container, .main, #root, .app, .wrap, footer, .contain, [dat
     margin: 0 !important;
 }
 
-.menu-header {
-    font-size: 11px;
-    font-weight: 700;
-    color: #64748B !important;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 8px;
-    margin-top: 18px;
-    padding-left: 6px;
-}
-
 .sidebar-nav-btn {
     text-align: left !important;
     justify-content: flex-start !important;
     background-color: transparent !important;
     border: none !important;
-    color: #334155 !important;
-    font-size: 14px !important;
-    font-weight: 600 !important;
+    color: #94A3B8 !important;
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
     padding: 10px 14px !important;
     width: 100% !important;
-    border-radius: 8px !important;
+    border-radius: 12px !important;
     cursor: pointer;
-    transition: all 0.15s ease;
     margin-bottom: 4px;
     box-shadow: none !important;
-    display: flex !important;
-    align-items: center !important;
 }
 
 .sidebar-nav-btn:hover {
-    background-color: #F1F5F9 !important;
-    color: #0F172A !important;
+    background-color: #161E2E !important;
+    color: #F8FAFC !important;
 }
 
+/* Active Sidebar Button - Bright Electric Blue Pill */
 .active-nav-btn {
-    background: linear-gradient(135deg, #388E3C 0%, #1B5E20 100%) !important; /* Green gradient matching reference image */
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
     color: #FFFFFF !important;
-    font-weight: 700 !important;
-    box-shadow: 0 4px 6px -1px rgba(46, 125, 50, 0.25) !important;
-}
-
-.active-nav-btn:hover {
-    background: linear-gradient(135deg, #2E7D32 0%, #144D17 100%) !important;
-    color: #FFFFFF !important;
-}
-
-/* Card & Section Containers - Pure White Cards over Cream Background */
-.card-container, .block, .panel, .box, .form, .accordion, .tabitem {
-    background-color: #FFFFFF !important;
-    border: 1px solid #E5E0D8 !important;
-    border-radius: 10px !important;
-    padding: 20px !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03) !important;
-    margin-bottom: 20px !important;
-}
-
-/* Remove default Gradio constraints to allow full page spread */
-.gradio-container {
-    max-width: 100% !important;
-    padding: 10px 15px !important;
-    margin: 0 !important;
-    background-color: #F6F3ED !important;
-}
-
-/* Component blocks: input textboxes, file uploaders, code boxes, images */
-input, textarea, select, .block, .gr-box, .gr-block, 
-[data-testid="file-upload"], .image-container, .upload-container, 
-.code-container, .gr-file, .file-preview, .image-frame, div[data-testid="image"] {
-    background-color: #FFFFFF !important;
-    border: 1px solid #CBD5E1 !important;
-    color: #000000 !important;
-    border-radius: 8px !important;
-}
-
-/* Force dark/black text for maximum contrast across all elements */
-p, li, span, tr, td, th, h1, h2, h3, h4, h5, h6, label, div, button:not(.active-nav-btn) {
-    color: #000000 !important;
-}
-
-.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6,
-.prose p, .prose li, .prose span, .prose tr, .prose td, .prose th {
-    color: #000000 !important;
-}
-
-/* Labels and Titles */
-label span, .block span, .block label, .block p, .label, .block-title, .title {
-    color: #000000 !important;
     font-weight: 600 !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4) !important;
+    border-radius: 12px !important;
 }
 
-/* Error Alert Box styling - Red Box and Red Font */
-.error-box, [data-testid="toast-error"], .error-alert, .alert-error, .error-msg {
-    background-color: #FEF2F2 !important;
-    border: 1px solid #FCA5A5 !important;
-    color: #991B1B !important;
-    border-radius: 8px !important;
-    padding: 12px 16px !important;
-    font-weight: 600 !important;
+/* 2. DEDICATED SCROLLABLE MAIN CONTENT VIEWPORT (Starts AT 165px, Height calc(100vh - 165px)) */
+.main-content-container,
+[data-testid="column"].main-content-container {
+    position: fixed !important;
+    top: 165px !important; /* Starts EXACTLY below the 165px fixed top header bar */
+    left: 260px !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: calc(100% - 260px) !important;
+    max-width: calc(100% - 260px) !important;
+    height: calc(100vh - 165px) !important;
+    max-height: calc(100vh - 165px) !important;
+    overflow-y: auto !important; /* Dedicated independent scrollbar ONLY inside this window */
+    overflow-x: hidden !important;
+    padding-top: 20px !important;
+    padding-left: 48px !important;
+    padding-right: 36px !important;
+    padding-bottom: 50px !important;
+    background-color: #EEF2F9 !important;
+    box-sizing: border-box !important;
+    z-index: 1 !important;
 }
 
-/* Fix all code / backtick highlights - Replace black highlights with light slate badges */
-code, pre, kbd, samp, .prose code, code *, .markdown code, pre code {
-    background-color: #F1F5F9 !important;
-    color: #0F172A !important;
-    padding: 3px 8px !important;
-    border-radius: 5px !important;
-    border: 1px solid #CBD5E1 !important;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace !important;
-    font-size: 0.9em !important;
-    font-weight: 600 !important;
+/* 3. SOLID OPAQUE DEDICATED FIXED TOP HEADER BLOCK (Z-Index 9999) */
+.top-sticky-header-container,
+[data-testid="column"].top-sticky-header-container {
+    position: fixed !important;
+    top: 0 !important;
+    left: 260px !important;
+    right: 0 !important;
+    width: calc(100% - 260px) !important;
+    height: 165px !important; /* Fixed 165px height for title + status + 4 card boxes */
+    box-sizing: border-box !important;
+    z-index: 9999 !important; /* STRICT Z-INDEX 9999 */
+    background-color: #EEF2F9 !important; /* SOLID OPAQUE CREAM/LIGHT BLUE BACKGROUND */
+    background-image: radial-gradient(#CBD5E1 0.75px, transparent 0.75px), radial-gradient(#CBD5E1 0.75px, #EEF2F9 0.75px) !important;
+    background-size: 24px 24px !important;
+    background-position: 0 0, 12px 12px !important;
+    padding: 14px 36px 12px 48px !important;
+    border-bottom: 2.5px solid #CBD5E1 !important;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.08) !important;
+}
+
+.top-sticky-header-container .block,
+.top-sticky-header-container .gr-block,
+.top-sticky-header-container .panel,
+.top-sticky-header-container .box,
+.top-sticky-header-container .card-container {
+    background-color: transparent !important;
+    border: none !important;
     box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
-/* Ensure code inside markdown cards renders crisp dark font */
-.prose code, .markdown code {
-    background-color: #F1F5F9 !important;
+.top-sticky-header-container .row,
+.top-sticky-header-container .gr-row,
+.top-sticky-header-container [data-testid="row"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 12px !important;
+    width: 100% !important;
+    margin-top: 10px !important;
+}
+
+.top-tab-card {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    background: #FFFFFF !important;
+    border: 1px solid #CBD5E1 !important;
+    border-radius: 14px !important;
+    padding: 10px 14px !important;
+    cursor: pointer;
+    text-align: center !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    color: #334155 !important;
+    transition: all 0.2s ease;
+}
+
+.top-tab-card:hover {
+    border-color: #93C5FD !important;
+    background: #F8FAFC !important;
+}
+
+.active-top-card {
+    border: 2px solid #3B82F6 !important;
+    background: #EFF6FF !important;
+    color: #1D4ED8 !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15) !important;
+}
+
+/* 4. CONTENT CARDS - Crisp Pure White with Slate Navy Text (Only target explicit card-container) */
+.card-container {
+    background-color: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 20px !important;
+    padding: 24px !important;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.03) !important;
+    margin-bottom: 20px !important;
     color: #0F172A !important;
 }
 
-/* Table header/cell styling */
-th {
-    border-bottom: 2px solid #CBD5E1 !important;
-    font-weight: bold !important;
-    color: #000000 !important;
+/* Ensure empty or wrapper blocks remain 100% transparent on #EEF2F9 canvas */
+.main-content-container > .block:not(.card-container),
+.main-content-container > .panel:not(.card-container),
+.main-content-container > div:empty,
+.top-sticky-header-container,
+.top-sticky-header-container .block,
+.top-sticky-header-container .panel,
+.top-sticky-header-container .box,
+.top-sticky-header-container [data-testid="column"],
+.top-sticky-header-container [data-testid="block"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
 }
+
+.card-container h1, .card-container h2, .card-container h3, .card-container h4, .card-container p, .card-container span, .card-container label {
+    color: #0F172A !important;
+}
+
+/* Upload Dropzone Container */
+[data-testid="file-upload"], .upload-container, div[data-testid="image"] {
+    background-color: #F8FAFC !important;
+    border: 2px dashed #93C5FD !important;
+    border-radius: 16px !important;
+    padding: 20px !important;
+}
+
+/* Primary Blue Action Buttons */
+button.primary-btn, button.variant-primary, .primary-btn {
+    background: #2563EB !important;
+    color: #FFFFFF !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25) !important;
+    padding: 10px 20px !important;
+    cursor: pointer;
+}
+
+button.primary-btn:hover, button.variant-primary:hover {
+    background: #1D4ED8 !important;
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35) !important;
+}
+
+button.secondary-btn, button.variant-secondary {
+    background: #F1F5F9 !important;
+    color: #334155 !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    border: 1px solid #CBD5E1 !important;
+}
+
+/* Input Fields & Textareas */
+input, textarea, select {
+    background-color: #FFFFFF !important;
+    border: 1px solid #CBD5E1 !important;
+    color: #0F172A !important;
+    border-radius: 10px !important;
+    padding: 10px 14px !important;
+}
+
+/* Code & Pre Blocks */
+code, pre, .prose code {
+    background-color: #F8FAFC !important;
+    color: #0F172A !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+}
+
+th {
+    border-bottom: 2px solid #E2E8F0 !important;
+    font-weight: 700 !important;
+    color: #475569 !important;
+    font-size: 12px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+}
+
 td {
-    border-bottom: 1px solid #E2E8F0 !important;
-    color: #000000 !important;
+    border-bottom: 1px solid #F1F5F9 !important;
+    color: #0F172A !important;
+}
+
+.center-upload-card {
+    max-width: 650px !important;
+    margin: 0 auto 24px auto !important;
+    text-align: center !important;
+}
+
+.action-btn-row {
+    margin-top: 16px !important;
 }
 """
 
@@ -1933,178 +2105,250 @@ def get_logo_html():
             mime = "image/jpeg" if logo_file.lower().endswith(('.jpeg', '.jpg')) else "image/png"
             with open(logo_file, "rb") as f:
                 encoded = base64.b64encode(f.read()).decode('utf-8')
-            return f'<img src="data:{mime};base64,{encoded}" style="height: 36px; width: auto; object-fit: contain; border-radius: 4px;" alt="SetCONNECT Logo" />'
+            return f'<img src="data:{mime};base64,{encoded}" style="height: 32px; width: auto; object-fit: contain; border-radius: 6px;" alt="SetCONNECT Logo" />'
         except Exception as e:
             print(f"⚠️ Error reading logo image file: {e}")
-    return '''<svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="50" cy="50" r="45" stroke="#00A8E8" stroke-width="6" fill="#0F172A"/>
-        <ellipse cx="50" cy="50" rx="45" ry="18" stroke="#00A8E8" stroke-width="5"/>
-        <ellipse cx="50" cy="50" rx="20" ry="45" stroke="#00A8E8" stroke-width="5"/>
-        <line x1="5" y1="50" x2="95" y2="50" stroke="#00A8E8" stroke-width="5"/>
-        <line x1="50" y1="5" x2="50" y2="95" stroke="#00A8E8" stroke-width="5"/>
-    </svg>'''
+    return '''<div style="width: 34px; height: 34px; background: linear-gradient(135deg, #00A8E8 0%, #2563EB 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0, 168, 232, 0.4);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <polyline points="9 12 11 14 15 10"/>
+        </svg>
+    </div>'''
 
-blocks_kwargs = {"title": "SetConnect Diagnostic Workstation"}
-if not theme_in_launch:
-    blocks_kwargs["theme"] = custom_theme
-    blocks_kwargs["css"] = custom_css
-
-with gr.Blocks(**blocks_kwargs) as demo:
+with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as demo:
+    # Inject Custom CSS directly into DOM to bypass Gradio theme caching
+    gr.HTML(f"<style>{custom_css}</style>")
     current_doc_id = gr.State("")
 
     with gr.Row():
-        # Sidebar menu with SetCONNECT Globe Logo & Compact Status
+        # Sidebar menu (Dark Navy - Fixed Pinned with NO Scrollbar)
         with gr.Column(scale=1, elem_classes="sidebar-container"):
             gr.HTML(f"""
-                <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px solid #E5E0D8;">
+                <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid #1E293B;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         {get_logo_html()}
-                        <span style="font-size: 18px; font-weight: 800; color: #0F172A; letter-spacing: -0.02em;">Set<span style="color: #00A8E8;">Connect</span></span>
+                        <div>
+                            <div style="font-size: 17px; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em; line-height: 1.1;">Set<span style="color: #38BDF8;">CONNECT</span></div>
+                            <div style="font-size: 10px; font-weight: 500; color: #64748B;">Medical AI Diagnostic</div>
+                        </div>
                     </div>
-                    <div style="border: 1px solid #CBD5E1; background: white; border-radius: 6px; padding: 2px 8px; color: #64748B; font-weight: bold; font-size: 13px; cursor: pointer;">«</div>
                 </div>
-                <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; margin-top: 10px; padding-left: 4px;">MAIN MENU</div>
+                
+                <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; padding-left: 4px;">MAIN MENU</div>
             """)
             
-            nav_overview_btn = gr.Button("🎯 Overview", elem_classes="sidebar-nav-btn active-nav-btn")
-            nav_load_data_btn = gr.Button("📥 Load Data", elem_classes="sidebar-nav-btn")
-            nav_clinical_review_btn = gr.Button("📋 Clinical Review", elem_classes="sidebar-nav-btn")
-            nav_clinical_report_btn = gr.Button("📄 Clinical Report", elem_classes="sidebar-nav-btn")
+            nav_overview_btn = gr.Button("🎯  Overview", elem_classes="sidebar-nav-btn active-nav-btn")
+            nav_load_data_btn = gr.Button("📥  Load Data", elem_classes="sidebar-nav-btn")
+            nav_clinical_review_btn = gr.Button("📋  Clinical Review", elem_classes="sidebar-nav-btn")
+            nav_clinical_report_btn = gr.Button("📄  Clinical Report", elem_classes="sidebar-nav-btn")
             
             gr.HTML("""
-                <div style="margin-top: 20px; padding: 10px 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px;">
-                    <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">SYSTEM STATUS</div>
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <span style="font-size: 11px; font-weight: 600; color: #1E293B;">MongoDB Atlas</span>
-                        <span style="background-color: #C6F6D5; color: #22543D; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700;">Connected ✓</span>
+                <div style="margin-top: 14px;">
+                    <!-- RECENT PATIENT SESSIONS (Matches Reference Image 1 & 2) -->
+                    <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; padding-left: 4px;">RECENT PATIENT SESSIONS</div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: #161E2E; border: 1px solid #1E293B; border-radius: 8px; color: #94A3B8; font-size: 11.5px; font-weight: 500;">
+                            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+                                <span style="color: #38BDF8; font-size: 11px;">💬</span>
+                                <span style="color: #F8FAFC; font-weight: 600;">neuro_908 (Emma)</span>
+                            </div>
+                            <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                                <span style="background: #1E293B; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; color: #94A3B8;">✏️</span>
+                                <span style="background: #1E293B; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; color: #94A3B8;">🗑️</span>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: #161E2E; border: 1px solid #1E293B; border-radius: 8px; color: #94A3B8; font-size: 11.5px; font-weight: 500;">
+                            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+                                <span style="color: #38BDF8; font-size: 11px;">💬</span>
+                                <span style="color: #F8FAFC; font-weight: 600;">liver_102 (Liam)</span>
+                            </div>
+                            <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                                <span style="background: #1E293B; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; color: #94A3B8;">✏️</span>
+                                <span style="background: #1E293B; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; color: #94A3B8;">🗑️</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- QUICK ACTIONS (Matches Reference Image 1 & 2) -->
+                    <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; padding-left: 4px;">QUICK ACTIONS</div>
+                    <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px;">
+                        <div style="padding: 8px 10px; background: #161E2E; border: 1px solid #1E293B; border-radius: 8px; color: #94A3B8; font-size: 11.5px; font-weight: 500; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <span style="font-size: 12px;">📥</span> <span style="color: #E2E8F0; font-weight: 600;">Ingest Scan</span>
+                        </div>
+                        <div style="padding: 8px 10px; background: #161E2E; border: 1px solid #1E293B; border-radius: 8px; color: #94A3B8; font-size: 11.5px; font-weight: 500; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <span style="font-size: 12px;">💬</span> <span style="color: #E2E8F0; font-weight: 600;">Ask Clinical AI</span>
+                        </div>
+                    </div>
+
+                    <!-- USER ADMIN FOOTER CARD (Matches Reference Image 1 & 2 Footer) -->
+                    <div style="padding-top: 12px; border-top: 1px solid #1E293B; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #2563EB, #1D4ED8); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; box-shadow: 0 2px 8px rgba(37,99,235,0.4);">MD</div>
+                            <div>
+                                <div style="font-size: 11.5px; font-weight: 700; color: #FFFFFF;">MD Admin</div>
+                                <div style="font-size: 9.5px; color: #64748B;">Radiologist</div>
+                            </div>
+                        </div>
+                        <span style="color: #64748B; font-size: 14px; font-weight: bold;">›</span>
                     </div>
                 </div>
             """)
             
-        # Main content area
-        with gr.Column(scale=4):
-            # Top navigation bar
-            gr.HTML("""
-                <div style="display: flex; align-items: center; gap: 15px; background: white; padding: 14px 20px; border-radius: 8px; border: 1px solid #E5E0D8; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-                    <div style="border: 1px solid #CBD5E1; background: white; border-radius: 6px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 16px; font-weight: bold; cursor: pointer;">☰</div>
-                    <div>
-                        <div style="font-size: 19px; font-weight: 800; color: #0F172A;">SetConnect Medical AI Diagnostic Workstation</div>
-                        <div style="font-size: 12px; font-weight: 500; color: #64748B; margin-top: 1px;">Overview · Load Data · Clinical Review · Clinical Report · System Health</div>
+        # Main content area (Scrollable container offset by sidebar width)
+        with gr.Column(scale=4, elem_classes="main-content-container"):
+            # DEDICATED FIXED TOP HEADER CONTAINER (Contains Title + Icons + 4 Horizontal Card Boxes)
+            with gr.Column(elem_classes="top-sticky-header-container"):
+                gr.HTML("""
+                    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 6px;">
+                        <div>
+                            <div style="font-size: 26px; font-weight: 800; font-style: italic; color: #0F172A; letter-spacing: -0.03em; white-space: nowrap;">Set<span style="color: #0F172A;">CONNECT</span></div>
+                            <div style="font-size: 11.5px; font-weight: 600; color: #64748B; margin-top: 1px; white-space: nowrap;">Medical AI Diagnostic • Scan Intelligence • Hierarchical AI</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 9999px; padding: 5px 12px; font-size: 11.5px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                                <span style="width: 7px; height: 7px; background-color: #22C55E; border-radius: 50%; display: inline-block;"></span>
+                                API Online
+                            </div>
+                            <div style="width: 34px; height: 34px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #64748B; font-size: 13px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">🌙</div>
+                            <div style="width: 34px; height: 34px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #64748B; font-size: 13px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">🔔</div>
+                            <div style="width: 34px; height: 34px; background: #2563EB; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #FFFFFF; font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(37,99,235,0.3);">MD</div>
+                        </div>
                     </div>
-                </div>
-            """)
+                """)
+
+                # 4 Horizontal Card Boxes (Fixed inside top container - NEVER scroll out of view)
+                with gr.Row():
+                    top_tab_overview_btn = gr.Button("🎯  Overview\nDashboard", elem_classes="top-tab-card active-top-card")
+                    top_tab_load_data_btn = gr.Button("📥  Load Data\nIngest & analyze", elem_classes="top-tab-card")
+                    top_tab_clinical_review_btn = gr.Button("📋  Clinical Review\nValidation & notes", elem_classes="top-tab-card")
+                    top_tab_clinical_report_btn = gr.Button("📄  Clinical Report\nDiagnostic report", elem_classes="top-tab-card")
+
+            # --- TABS / SECTIONS ---
             
-            # --- TABS/SECTIONS ---
-            
-            # SECTION 1: OVERVIEW
+            # SECTION 1: OVERVIEW & DASHBOARD
             with gr.Column(visible=True) as overview_section:
                 with gr.Column(elem_classes="card-container"):
                     gr.HTML("""
-                        <h2 style="margin-top: 0; color: #2b6cb0;">📊 Diagnostics System Overview</h2>
-                        <p style="color: #4a5568;">Real-time diagnostics tracking, system performance metrics, and clinical pipelines.</p>
+                        <h2 style="margin-top: 0; color: #0F172A; font-weight: 800; font-size: 20px;">📊 Diagnostics System Overview</h2>
+                        <p style="color: #64748B; font-size: 14px; margin-top: 4px;">Real-time diagnostics tracking, system performance metrics, and clinical pipelines.</p>
                         
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px; margin-top: 15px;">
-                            <div style="background: linear-gradient(135deg, #ebf8ff 0%, #bee3f8 100%); border: 1px solid #bee3f8; border-radius: 8px; padding: 16px;">
-                                <div style="font-size: 11px; font-weight: 700; color: #2b6cb0; text-transform: uppercase;">Active AI Networks</div>
-                                <div style="font-size: 28px; font-weight: 700; color: #2b6cb0; margin-top: 5px;">8 Models</div>
-                                <div style="font-size: 12px; color: #4976a4; margin-top: 5px;">1 Generalist + 7 Specialists</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 20px; margin-bottom: 10px;">
+                            <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 14px; padding: 18px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #1D4ED8; text-transform: uppercase;">Active AI Networks</div>
+                                <div style="font-size: 30px; font-weight: 800; color: #1E40AF; margin-top: 6px;">8 Models</div>
+                                <div style="font-size: 12px; color: #3B82F6; margin-top: 4px;">1 Generalist + 7 Specialists</div>
                             </div>
-                            <div style="background: linear-gradient(135deg, #faf5ff 0%, #e9d8fd 100%); border: 1px solid #e9d8fd; border-radius: 8px; padding: 16px;">
-                                <div style="font-size: 11px; font-weight: 700; color: #6b46c1; text-transform: uppercase;">Knowledge Bases</div>
-                                <div style="font-size: 28px; font-weight: 700; color: #6b46c1; margin-top: 5px;">2 databases</div>
-                                <div style="font-size: 12px; color: #805ad5; margin-top: 5px;">Medical texts + Clinical logs</div>
+                            <div style="background: #F5F3FF; border: 1px solid #DDD6FE; border-radius: 14px; padding: 18px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #6D28D9; text-transform: uppercase;">Knowledge Bases</div>
+                                <div style="font-size: 30px; font-weight: 800; color: #5B21B6; margin-top: 6px;">2 databases</div>
+                                <div style="font-size: 12px; color: #7C3AED; margin-top: 4px;">Medical texts + Clinical logs</div>
                             </div>
-                            <div style="background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%); border: 1px solid #c6f6d5; border-radius: 8px; padding: 16px;">
-                                <div style="font-size: 11px; font-weight: 700; color: #2f855a; text-transform: uppercase;">Pipeline Latency</div>
-                                <div style="font-size: 28px; font-weight: 700; color: #2f855a; margin-top: 5px;">&lt; 1.5s</div>
-                                <div style="font-size: 12px; color: #38a169; margin-top: 5px;">Inference & Preprocessing</div>
-                            </div>
-                        </div>
-                    """)
-                    
-                with gr.Column(elem_classes="card-container"):
-                    gr.HTML("""
-                        <h3 style="margin-top: 0; color: #2d3748; margin-bottom: 15px;">🔄 AI Agent Diagnostic Flow</h3>
-                        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 15px; background-color: #f7fafc; padding: 20px; border-radius: 8px; border: 1px solid #edf2f7; margin-bottom: 15px;">
-                            <div style="flex: 1; min-width: 120px; text-align: center; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                                <div style="font-weight: 600; color: #2d3748;">1. Scan Ingestion</div>
-                                <div style="font-size: 12px; color: #718096; margin-top: 4px;">DICOM / Image Upload</div>
-                            </div>
-                            <div style="color: #a0aec0; font-size: 20px; font-weight: bold;">➔</div>
-                            <div style="flex: 1; min-width: 120px; text-align: center; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                                <div style="font-weight: 600; color: #2d3748;">2. RL Agent</div>
-                                <div style="font-size: 12px; color: #718096; margin-top: 4px;">Contrast/Blur Policy</div>
-                            </div>
-                            <div style="color: #a0aec0; font-size: 20px; font-weight: bold;">➔</div>
-                            <div style="flex: 1; min-width: 120px; text-align: center; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                                <div style="font-weight: 600; color: #2d3748;">3. Hierarchical AI</div>
-                                <div style="font-size: 12px; color: #718096; margin-top: 4px;">Generalist + Specialist</div>
-                            </div>
-                            <div style="color: #a0aec0; font-size: 20px; font-weight: bold;">➔</div>
-                            <div style="flex: 1; min-width: 120px; text-align: center; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                                <div style="font-weight: 600; color: #2d3748;">4. Agentic RAG</div>
-                                <div style="font-size: 12px; color: #718096; margin-top: 4px;">Clinical Justification</div>
+                            <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 14px; padding: 18px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #15803D; text-transform: uppercase;">Pipeline Latency</div>
+                                <div style="font-size: 30px; font-weight: 800; color: #166534; margin-top: 6px;">&lt; 1.5s</div>
+                                <div style="font-size: 12px; color: #22C55E; margin-top: 4px;">Inference & Preprocessing</div>
                             </div>
                         </div>
                     """)
                     
                 with gr.Column(elem_classes="card-container"):
                     gr.HTML("""
-                        <h3 style="margin-top: 0; color: #2d3748; margin-bottom: 10px;">📋 Recent Patient Entries</h3>
-                        <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 10px;">
+                        <h3 style="margin-top: 0; color: #0F172A; font-size: 16px; font-weight: 700; margin-bottom: 16px;">🔄 AI Agent Diagnostic Flow</h3>
+                        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; background-color: #F8FAFC; padding: 20px; border-radius: 14px; border: 1px solid #E2E8F0;">
+                            <div style="flex: 1; min-width: 130px; text-align: center; padding: 12px; background: white; border-radius: 10px; border: 1px solid #CBD5E1; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                <div style="font-weight: 700; color: #0F172A; font-size: 13px;">1. Scan Ingestion</div>
+                                <div style="font-size: 11px; color: #64748B; margin-top: 4px;">DICOM / Image Upload</div>
+                            </div>
+                            <div style="color: #94A3B8; font-size: 18px; font-weight: bold;">➔</div>
+                            <div style="flex: 1; min-width: 130px; text-align: center; padding: 12px; background: white; border-radius: 10px; border: 1px solid #CBD5E1; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                <div style="font-weight: 700; color: #0F172A; font-size: 13px;">2. RL Agent</div>
+                                <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Contrast/Blur Policy</div>
+                            </div>
+                            <div style="color: #94A3B8; font-size: 18px; font-weight: bold;">➔</div>
+                            <div style="flex: 1; min-width: 130px; text-align: center; padding: 12px; background: white; border-radius: 10px; border: 1px solid #CBD5E1; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                <div style="font-weight: 700; color: #0F172A; font-size: 13px;">3. Hierarchical AI</div>
+                                <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Generalist + Specialist</div>
+                            </div>
+                            <div style="color: #94A3B8; font-size: 18px; font-weight: bold;">➔</div>
+                            <div style="flex: 1; min-width: 130px; text-align: center; padding: 12px; background: white; border-radius: 10px; border: 1px solid #CBD5E1; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                <div style="font-weight: 700; color: #0F172A; font-size: 13px;">4. Agentic RAG</div>
+                                <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Clinical Justification</div>
+                            </div>
+                        </div>
+                    """)
+                    
+                with gr.Column(elem_classes="card-container"):
+                    gr.HTML("""
+                        <h3 style="margin-top: 0; color: #0F172A; font-size: 16px; font-weight: 700; margin-bottom: 12px;">📋 Recent Patient Entries</h3>
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 8px;">
                             <thead>
-                                <tr style="border-bottom: 2px solid #cbd5e0; color: #000000; font-weight: 600;">
-                                    <th style="padding: 10px 5px;">Patient ID</th>
-                                    <th style="padding: 10px 5px;">Patient Name</th>
-                                    <th style="padding: 10px 5px;">Scan Type</th>
-                                    <th style="padding: 10px 5px;">Broad Category</th>
-                                    <th style="padding: 10px 5px;">Status</th>
+                                <tr>
+                                    <th style="padding: 10px 8px;">Patient ID</th>
+                                    <th style="padding: 10px 8px;">Patient Name</th>
+                                    <th style="padding: 10px 8px;">Scan Type</th>
+                                    <th style="padding: 10px 8px;">Broad Category</th>
+                                    <th style="padding: 10px 8px;">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr style="border-bottom: 1px solid #e2e8f0; color: #000000;">
-                                    <td style="padding: 12px 5px; font-family: monospace;">neuro_908</td>
-                                    <td style="padding: 12px 5px;">Emma Watson</td>
-                                    <td style="padding: 12px 5px;">Brain MRI (.dcm)</td>
-                                    <td style="padding: 12px 5px; font-weight: 500; color: #dd6b20;">genetic</td>
-                                    <td style="padding: 12px 5px;"><span style="background-color: #c6f6d5; color: #22543d; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Analyzed</span></td>
+                                <tr>
+                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">neuro_908</td>
+                                    <td style="padding: 12px 8px; font-weight: 600;">Emma Watson</td>
+                                    <td style="padding: 12px 8px;">Brain MRI (.dcm)</td>
+                                    <td style="padding: 12px 8px; font-weight: 600; color: #D97706;">genetic</td>
+                                    <td style="padding: 12px 8px;"><span style="background-color: #DCFCE7; color: #166534; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700;">Analyzed</span></td>
                                 </tr>
-                                <tr style="border-bottom: 1px solid #e2e8f0; color: #000000;">
-                                    <td style="padding: 12px 5px; font-family: monospace;">liver_102</td>
-                                    <td style="padding: 12px 5px;">Liam Neeson</td>
-                                    <td style="padding: 12px 5px;">Abdominal scan</td>
-                                    <td style="padding: 12px 5px; font-weight: 500; color: #e53e3e;">Malignant</td>
-                                    <td style="padding: 12px 5px;"><span style="background-color: #feebc8; color: #744210; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Flagged</span></td>
+                                <tr>
+                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">liver_102</td>
+                                    <td style="padding: 12px 8px; font-weight: 600;">Liam Neeson</td>
+                                    <td style="padding: 12px 8px;">Abdominal scan</td>
+                                    <td style="padding: 12px 8px; font-weight: 600; color: #DC2626;">Malignant</td>
+                                    <td style="padding: 12px 8px;"><span style="background-color: #FEF3C7; color: #92400E; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700;">Flagged</span></td>
                                 </tr>
-                                <tr style="border-bottom: 1px solid #e2e8f0; color: #000000;">
-                                    <td style="padding: 12px 5px; font-family: monospace;">neuro_002</td>
-                                    <td style="padding: 12px 5px;">Daniel Craig</td>
-                                    <td style="padding: 12px 5px;">Brain MRI (.png)</td>
-                                    <td style="padding: 12px 5px; font-weight: 500; color: #3182ce;">infectious</td>
-                                    <td style="padding: 12px 5px;"><span style="background-color: #fed7d7; color: #742a2a; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">Urgent Alert</span></td>
+                                <tr>
+                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">neuro_002</td>
+                                    <td style="padding: 12px 8px; font-weight: 600;">Daniel Craig</td>
+                                    <td style="padding: 12px 8px;">Brain MRI (.png)</td>
+                                    <td style="padding: 12px 8px; font-weight: 600; color: #2563EB;">infectious</td>
+                                    <td style="padding: 12px 8px;"><span style="background-color: #FEE2E2; color: #991B1B; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700;">Urgent Alert</span></td>
                                 </tr>
                             </tbody>
                         </table>
                     """)
             
-            # SECTION 2: LOAD DATA & ANALYSIS
+            # SECTION 2: LOAD DATA & ANALYSIS (Original Content Wrapped in Reference Image Visual Layout)
             with gr.Column(visible=False) as load_patient_section:
+                # Large Center Card Container (Matches Reference Image 1 Layout)
+                with gr.Column(elem_classes="card-container center-upload-card"):
+                    gr.HTML("""
+                        <div style="display: flex; justify-content: center; margin-bottom: 16px;">
+                            <div style="width: 64px; height: 64px; background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #2563EB; font-size: 28px; box-shadow: 0 4px 12px rgba(37,99,235,0.1);">
+                                📥
+                            </div>
+                        </div>
+                        <h2 style="margin-top: 0; font-weight: 800; font-size: 22px; color: #0F172A; margin-bottom: 6px;">Load Scan & Patient Details</h2>
+                        <p style="color: #64748B; font-size: 13.5px; margin-bottom: 20px; max-width: 480px; margin-left: auto; margin-right: auto; line-height: 1.5;">
+                            Upload DICOM, JPEG, or PNG clinical scan slices for automated RL preprocessing, hierarchical AI classification, and RAG diagnosis.
+                        </p>
+                    """)
+                    
+                    patient_name_input = gr.Textbox(label="Patient Name", placeholder="Enter patient name...")
+                    patient_id_input = gr.Textbox(label="Patient ID", placeholder="Enter patient ID...")
+                    
+                    input_image = gr.File(
+                        file_types=[".png", ".jpg", ".jpeg", ".dcm"],
+                        label="Upload Scan (JPEG/PNG/DICOM)"
+                    )
+                    
+                    with gr.Row(elem_classes="action-btn-row"):
+                        analyze_btn = gr.Button("⚡ Analyse Scan", elem_classes="primary-btn")
+                        reset_btn = gr.Button("🔄 Reset", elem_classes="secondary-btn")
+
+                # Visual Workspace & RL Preprocessing Output Cards
                 with gr.Row():
-                    # Left side: Patient metadata and scan file upload
                     with gr.Column(scale=1, elem_classes="card-container"):
-                        gr.Markdown("### 📥 Load Scan & Patient Details")
-                        patient_name_input = gr.Textbox(label="Patient Name", placeholder="Enter patient name...")
-                        patient_id_input = gr.Textbox(label="Patient ID", placeholder="Enter patient ID...")
-                        input_image = gr.File(
-                            file_types=[".png", ".jpg", ".jpeg", ".dcm"],
-                            label="Upload Scan (JPEG/PNG/DICOM)"
-                        )
-                        with gr.Row():
-                            analyze_btn = gr.Button("Analyse Scan", variant="primary")
-                            reset_btn = gr.Button("Reset", variant="secondary")
-                            
-                    # Right side: Visual workspace & RL outputs
-                    with gr.Column(scale=2, elem_classes="card-container"):
                         gr.Markdown("### 👁️ Image Preprocessing Workspace")
                         with gr.Row():
                             original_display = gr.Image(label="Original Scan", interactive=False)
@@ -2112,8 +2356,8 @@ with gr.Blocks(**blocks_kwargs) as demo:
                             
                         with gr.Accordion("📋 RL Preprocessor Execution Logs", open=False):
                             rl_logs_box = gr.Code(label="RL Steps & Metrics", language="markdown", interactive=False)
-                            
-                # Full-width Classification Outputs & Storage URLs (Spreads across 100% of screen)
+
+                # Classification Outputs & Cloud Records Card
                 with gr.Column(elem_classes="card-container"):
                     gr.Markdown("### 🏷️ Classification Outputs & Cloud Records")
                     with gr.Row():
@@ -2123,7 +2367,7 @@ with gr.Blocks(**blocks_kwargs) as demo:
                         confidence_box = gr.Label(label="Confidence Score", scale=1)
                         s3_url_box = gr.Textbox(label="S3 Cloud Storage Presigned URL", interactive=False, show_copy_button=True, scale=1)
                             
-            # SECTION 3: DOCTOR FEEDBACK LOOP (Clinical Review)
+            # SECTION 3: DOCTOR FEEDBACK LOOP (CLINICAL REVIEW)
             with gr.Column(visible=False) as clinical_review_section:
                 with gr.Column(elem_classes="card-container"):
                     review_case_display = gr.Markdown(value="### 📋 No patient scan has been analyzed yet in this session.\n*Go to **Load Data** to start an analysis.*")
@@ -2135,10 +2379,10 @@ with gr.Blocks(**blocks_kwargs) as demo:
                         placeholder="Enter clinical notes, validations, corrections, or follow-ups for permanent MongoDB logging...",
                         lines=5
                     )
-                    submit_feedback_btn = gr.Button("Submit Feedback", variant="primary")
+                    submit_feedback_btn = gr.Button("Submit Feedback", elem_classes="primary-btn")
                     feedback_status = gr.Markdown(value="", container=True)
                     
-            # SECTION 4: CLINICAL DIAGNOSIS & INTERPRETATION (Clinical Report)
+            # SECTION 4: CLINICAL DIAGNOSIS & INTERPRETATION (CLINICAL REPORT)
             with gr.Column(visible=False) as clinical_report_section:
                 with gr.Column(elem_classes="card-container"):
                     gr.Markdown("### 📄 Clinical Justification & RAG Report")
@@ -2151,7 +2395,11 @@ with gr.Blocks(**blocks_kwargs) as demo:
             gr.update(elem_classes="sidebar-nav-btn active-nav-btn"),
             gr.update(elem_classes="sidebar-nav-btn"),
             gr.update(elem_classes="sidebar-nav-btn"),
-            gr.update(elem_classes="sidebar-nav-btn")
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="top-tab-card active-top-card"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card")
         )
 
     def navigate_to_load_data():
@@ -2160,7 +2408,11 @@ with gr.Blocks(**blocks_kwargs) as demo:
             gr.update(elem_classes="sidebar-nav-btn"),
             gr.update(elem_classes="sidebar-nav-btn active-nav-btn"),
             gr.update(elem_classes="sidebar-nav-btn"),
-            gr.update(elem_classes="sidebar-nav-btn")
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card active-top-card"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card")
         )
 
     def navigate_to_clinical_review():
@@ -2169,7 +2421,11 @@ with gr.Blocks(**blocks_kwargs) as demo:
             gr.update(elem_classes="sidebar-nav-btn"),
             gr.update(elem_classes="sidebar-nav-btn"),
             gr.update(elem_classes="sidebar-nav-btn active-nav-btn"),
-            gr.update(elem_classes="sidebar-nav-btn")
+            gr.update(elem_classes="sidebar-nav-btn"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card active-top-card"),
+            gr.update(elem_classes="top-tab-card")
         )
 
     def navigate_to_clinical_report():
@@ -2178,16 +2434,21 @@ with gr.Blocks(**blocks_kwargs) as demo:
             gr.update(elem_classes="sidebar-nav-btn"),
             gr.update(elem_classes="sidebar-nav-btn"),
             gr.update(elem_classes="sidebar-nav-btn"),
-            gr.update(elem_classes="sidebar-nav-btn active-nav-btn")
+            gr.update(elem_classes="sidebar-nav-btn active-nav-btn"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card"),
+            gr.update(elem_classes="top-tab-card active-top-card")
         )
 
-    # Wire up navigation triggers for MAIN MENU
+    # Wire up navigation triggers for SIDEBAR
     nav_overview_btn.click(
         fn=navigate_to_overview,
         inputs=[],
         outputs=[
             overview_section, load_patient_section, clinical_review_section, clinical_report_section,
-            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn,
+            top_tab_overview_btn, top_tab_load_data_btn, top_tab_clinical_review_btn, top_tab_clinical_report_btn
         ]
     )
 
@@ -2196,7 +2457,8 @@ with gr.Blocks(**blocks_kwargs) as demo:
         inputs=[],
         outputs=[
             overview_section, load_patient_section, clinical_review_section, clinical_report_section,
-            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn,
+            top_tab_overview_btn, top_tab_load_data_btn, top_tab_clinical_review_btn, top_tab_clinical_report_btn
         ]
     )
 
@@ -2205,7 +2467,8 @@ with gr.Blocks(**blocks_kwargs) as demo:
         inputs=[],
         outputs=[
             overview_section, load_patient_section, clinical_review_section, clinical_report_section,
-            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn,
+            top_tab_overview_btn, top_tab_load_data_btn, top_tab_clinical_review_btn, top_tab_clinical_report_btn
         ]
     )
 
@@ -2214,7 +2477,49 @@ with gr.Blocks(**blocks_kwargs) as demo:
         inputs=[],
         outputs=[
             overview_section, load_patient_section, clinical_review_section, clinical_report_section,
-            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn,
+            top_tab_overview_btn, top_tab_load_data_btn, top_tab_clinical_review_btn, top_tab_clinical_report_btn
+        ]
+    )
+
+    # Wire up navigation triggers for TOP HORIZONTAL TAB CARDS
+    top_tab_overview_btn.click(
+        fn=navigate_to_overview,
+        inputs=[],
+        outputs=[
+            overview_section, load_patient_section, clinical_review_section, clinical_report_section,
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn,
+            top_tab_overview_btn, top_tab_load_data_btn, top_tab_clinical_review_btn, top_tab_clinical_report_btn
+        ]
+    )
+
+    top_tab_load_data_btn.click(
+        fn=navigate_to_load_data,
+        inputs=[],
+        outputs=[
+            overview_section, load_patient_section, clinical_review_section, clinical_report_section,
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn,
+            top_tab_overview_btn, top_tab_load_data_btn, top_tab_clinical_review_btn, top_tab_clinical_report_btn
+        ]
+    )
+
+    top_tab_clinical_review_btn.click(
+        fn=navigate_to_clinical_review,
+        inputs=[],
+        outputs=[
+            overview_section, load_patient_section, clinical_review_section, clinical_report_section,
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn,
+            top_tab_overview_btn, top_tab_load_data_btn, top_tab_clinical_review_btn, top_tab_clinical_report_btn
+        ]
+    )
+
+    top_tab_clinical_report_btn.click(
+        fn=navigate_to_clinical_report,
+        inputs=[],
+        outputs=[
+            overview_section, load_patient_section, clinical_review_section, clinical_report_section,
+            nav_overview_btn, nav_load_data_btn, nav_clinical_review_btn, nav_clinical_report_btn,
+            top_tab_overview_btn, top_tab_load_data_btn, top_tab_clinical_review_btn, top_tab_clinical_report_btn
         ]
     )
 
@@ -2277,6 +2582,12 @@ with gr.Blocks(**blocks_kwargs) as demo:
     )
 
 if __name__ == "__main__":
+    # Close any previously running Gradio instances in the kernel environment
+    try:
+        gr.close_all()
+    except Exception:
+        pass
+
     # Start background synchronization worker for offline fallback logging
     try:
         start_offline_sync_loop()
@@ -2284,21 +2595,30 @@ if __name__ == "__main__":
         print(f"[WARNING] Failed to start offline sync worker: {sync_err}")
 
     launch_kwargs = {"server_name": "0.0.0.0"}
-    if theme_in_launch:
-        launch_kwargs["theme"] = custom_theme
-        launch_kwargs["css"] = custom_css
-        
-    base_port = 7860
-    for port_offset in range(10):
-        target_port = base_port + port_offset
+    launched = False
+    for target_port in range(7860, 7920):
         try:
             launch_kwargs["server_port"] = target_port
             demo.queue()
             demo.launch(**launch_kwargs)
+            launched = True
+            print(f"🚀 SetCONNECT Medical AI running successfully on port {target_port}!")
             break
         except OSError as e:
-            if "port" in str(e).lower() or "use" in str(e).lower():
-                print(f"[WARNING] Port {target_port} is busy. Trying port {target_port + 1}...")
+            if "port" in str(e).lower() or "use" in str(e).lower() or "address" in str(e).lower():
                 continue
             else:
                 raise e
+        except Exception as e:
+            if "theme" in str(e).lower() or "css" in str(e).lower() or "port" in str(e).lower():
+                continue
+            else:
+                raise e
+
+    if not launched:
+        launch_kwargs.pop("server_port", None)
+        demo.queue()
+        demo.launch(**launch_kwargs)
+
+
+
