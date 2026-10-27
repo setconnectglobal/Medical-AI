@@ -1805,10 +1805,18 @@ def find_file(filename):
     return None
 
 # Resolve model assets paths dynamically
-qtable_file = find_file('rl_agent.json')
-weights_file = find_file('rlagent.pth')
-if not weights_file:
-    weights_file = find_file('rlagent.wt')
+qtable_file = (
+    find_file('rl_agent.json') or 
+    find_file('rl_training_metadata (1).json') or 
+    find_file('rl_training_metadata.json')
+)
+weights_file = (
+    find_file('rlagent.pth') or 
+    find_file('rlagent.wt') or 
+    find_file('rl_agent_weights (1).pth') or 
+    find_file('rl_agent_weights.pth') or
+    find_file('unified_10class_model.pth')
+)
 
 my_model_paths = {
     'generalist':    weights_file if weights_file else 'rlagent.wt',
@@ -3438,31 +3446,48 @@ if __name__ == "__main__":
     except Exception as sync_err:
         print(f"[WARNING] Failed to start offline sync worker: {sync_err}")
 
-    launch_kwargs = {"server_name": "0.0.0.0", "share": True}
-    launched = False
-    for target_port in range(7860, 7920):
-        try:
-            launch_kwargs["server_port"] = target_port
-            demo.queue()
-            demo.launch(**launch_kwargs)
-            launched = True
-            print(f"🚀 SetCONNECT Medical AI running successfully on port {target_port}!")
-            break
-        except OSError as e:
-            if "port" in str(e).lower() or "use" in str(e).lower() or "address" in str(e).lower():
-                continue
-            else:
-                raise e
-        except Exception as e:
-            if "theme" in str(e).lower() or "css" in str(e).lower() or "port" in str(e).lower():
-                continue
-            else:
-                raise e
+    # Dynamic Port and Cloud Environment Handling (Railway / Cloud deployment)
+    default_port = int(os.environ.get("PORT", 7860))
+    is_cloud = bool(os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("PORT") or os.environ.get("RAILWAY_ENVIRONMENT"))
 
-    if not launched:
-        launch_kwargs.pop("server_port", None)
+    launch_kwargs = {
+        "server_name": "0.0.0.0",
+        "share": False if is_cloud else True
+    }
+
+    # If in cloud with assigned PORT, directly bind to that port
+    if os.environ.get("PORT"):
+        target_port = int(os.environ.get("PORT"))
+        launch_kwargs["server_port"] = target_port
+        print(f"🚀 Launching SetCONNECT Medical AI on Railway cloud port {target_port} (share={launch_kwargs['share']})...")
         demo.queue()
         demo.launch(**launch_kwargs)
+    else:
+        # Local development fallback port scan
+        launched = False
+        for target_port in range(7860, 7920):
+            try:
+                launch_kwargs["server_port"] = target_port
+                demo.queue()
+                demo.launch(**launch_kwargs)
+                launched = True
+                print(f"🚀 SetCONNECT Medical AI running successfully on port {target_port}!")
+                break
+            except OSError as e:
+                if "port" in str(e).lower() or "use" in str(e).lower() or "address" in str(e).lower():
+                    continue
+                else:
+                    raise e
+            except Exception as e:
+                if "theme" in str(e).lower() or "css" in str(e).lower() or "port" in str(e).lower():
+                    continue
+                else:
+                    raise e
+
+        if not launched:
+            launch_kwargs.pop("server_port", None)
+            demo.queue()
+            demo.launch(**launch_kwargs)
 
 
 
