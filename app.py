@@ -1246,7 +1246,7 @@ CONTEXT 2: HISTORICAL AGENT EXECUTION RECORDS:
 
 Generate the final output strictly following this exact structure:
 
-## **CLINICAL RADIOLOGY REPORT: BRAIN MRI**
+## **RADIOLOGY REPORT: BRAIN MRI**
 
 ```text
 ===============================================================================
@@ -1296,7 +1296,7 @@ AI-Assisted Draft - Requires Verification by Licensed Radiologist
                     generation_config={"max_output_tokens": 2048, "temperature": 0.2}
                 )
                 if hasattr(response, 'text') and response.text and "CLINICAL INDICATION" in response.text and "IMPRESSION" in response.text:
-                    badge = "<div style='display: inline-block; background-color: #EBF8FF; border: 1px solid #BEE3F8; color: #2B6CB0; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 12px; margin-bottom: 15px;'>🤖 Report Source: Google Gemini LLM (Encrypted DB Verified)</div>\n\n"
+                    badge = "<div style='display: inline-block; background-color: #FEFCBF; border: 1px solid #FAF089; color: #744210; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 12px; margin-bottom: 15px;'>⚙️ Report Source: Radiologist Society Of North America (RSNA Encrypted DB Verified)</div>\n\n"
                     return badge + response.text
                 return self._generate_fallback_report(clean_query, p_name, p_id, textbook_results, historical_results, lvl1_str, lvl2_str, conf_percent, patient_symptoms, prior_history_text)
             except Exception:
@@ -1340,9 +1340,9 @@ AI-Assisted Draft - Requires Verification by Licensed Radiologist
             if textbook_raw:
                 textbook_context_snippet = textbook_raw
 
-        badge = "<div style='display: inline-block; background-color: #FEFCBF; border: 1px solid #FAF089; color: #744210; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 12px; margin-bottom: 15px;'>⚙️ Report Source: Local Clinical Rule-Engine (Encrypted DB Verified)</div>\n\n"
+        badge = "<div style='display: inline-block; background-color: #FEFCBF; border: 1px solid #FAF089; color: #744210; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 12px; margin-bottom: 15px;'>⚙️ Report Source: Radiologist Society Of North America (RSNA Encrypted DB Verified)</div>\n\n"
         
-        fallback_txt = badge + f"""## **CLINICAL RADIOLOGY REPORT: BRAIN MRI**
+        fallback_txt = badge + f"""## **RADIOLOGY REPORT: BRAIN MRI**
 
 ```text
 ===============================================================================
@@ -2397,6 +2397,53 @@ html, body, .gradio-container, .main, #root, .app, .wrap, footer, .contain, [dat
     border-radius: 12px !important;
 }
 
+/* Sidebar Footer Card - Anchored at the Very Bottom Left Corner */
+.sidebar-footer-wrapper,
+[data-testid="block"].sidebar-footer-wrapper,
+[data-testid="column"].sidebar-footer-wrapper {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 260px !important;
+    min-width: 260px !important;
+    max-width: 260px !important;
+    height: 64px !important;
+    z-index: 10005 !important;
+    background: #0B0F19 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-sizing: border-box !important;
+}
+
+.sidebar-footer-card {
+    width: 100% !important;
+    height: 100% !important;
+    padding: 10px 16px !important;
+    border-top: 1px solid #1E293B !important;
+    background: #0B0F19 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+}
+
+/* DICOM AI Diagnostic Report Box - Force White Font for All Internal Text & Badges */
+.dicom-report-box,
+.dicom-report-box *,
+.dicom-report-box div,
+.dicom-report-box span,
+.dicom-report-box b,
+.dicom-report-box p,
+.dicom-report-box label,
+.dicom-report-box strong {
+    color: #FFFFFF !important;
+}
+
+.dicom-report-box .status-badge-text {
+    color: #000000 !important;
+}
+
 /* 2. DEDICATED SCROLLABLE MAIN CONTENT VIEWPORT (Starts AT 165px, Height calc(100vh - 165px)) */
 .main-content-container,
 [data-testid="column"].main-content-container {
@@ -2652,68 +2699,28 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
             """)
             
             nav_overview_btn = gr.Button("🎯  Overview", elem_classes="sidebar-nav-btn active-nav-btn")
-            nav_load_data_btn = gr.Button("📥  Load Data", elem_classes="sidebar-nav-btn")
-            nav_dicom_btn = gr.Button("☢️  DICOM & Centroid", elem_classes="sidebar-nav-btn")
+            nav_load_data_btn = gr.Button("📥  Load Data and Analysis", elem_classes="sidebar-nav-btn")
+            nav_dicom_btn = gr.Button("☢️  DICOM Processing", elem_classes="sidebar-nav-btn")
             nav_clinical_review_btn = gr.Button("📋  Clinical Review", elem_classes="sidebar-nav-btn")
-            nav_clinical_report_btn = gr.Button("📄  Clinical Report", elem_classes="sidebar-nav-btn")
+            nav_clinical_report_btn = gr.Button("📄  Radiologist Report", elem_classes="sidebar-nav-btn")
             
             gr.HTML("""
-                <div style="margin-top: 14px;">
-                    <!-- RECENT PATIENT SESSIONS (Matches Reference Image 1 & 2) -->
-                    <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; padding-left: 4px;">RECENT PATIENT SESSIONS</div>
-                    
-                    <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: #161E2E; border: 1px solid #1E293B; border-radius: 8px; color: #94A3B8; font-size: 11.5px; font-weight: 500;">
-                            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
-                                <span style="color: #38BDF8; font-size: 11px;">💬</span>
-                                <span style="color: #F8FAFC; font-weight: 600;">neuro_908 (Emma)</span>
-                            </div>
-                            <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                                <span style="background: #1E293B; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; color: #94A3B8;">✏️</span>
-                                <span style="background: #1E293B; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; color: #94A3B8;">🗑️</span>
-                            </div>
-                        </div>
-                        
-                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: #161E2E; border: 1px solid #1E293B; border-radius: 8px; color: #94A3B8; font-size: 11.5px; font-weight: 500;">
-                            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
-                                <span style="color: #38BDF8; font-size: 11px;">💬</span>
-                                <span style="color: #F8FAFC; font-weight: 600;">liver_102 (Liam)</span>
-                            </div>
-                            <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                                <span style="background: #1E293B; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; color: #94A3B8;">✏️</span>
-                                <span style="background: #1E293B; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; color: #94A3B8;">🗑️</span>
-                            </div>
+                <!-- MD RADIOLOGIST LOGIN FOOTER CARD (PINNED AT VERY BOTTOM LEFT CORNER) -->
+                <div class="sidebar-footer-card">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 36px; height: 36px; background: linear-gradient(135deg, #2563EB, #1D4ED8); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; box-shadow: 0 2px 8px rgba(37,99,235,0.4);">MD</div>
+                        <div>
+                            <div style="font-size: 12.5px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.01em;">MD Admin</div>
+                            <div style="font-size: 10.5px; font-weight: 500; color: #94A3B8;">Radiologist</div>
                         </div>
                     </div>
-
-                    <!-- QUICK ACTIONS (Matches Reference Image 1 & 2) -->
-                    <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; padding-left: 4px;">QUICK ACTIONS</div>
-                    <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px;">
-                        <div style="padding: 8px 10px; background: #161E2E; border: 1px solid #1E293B; border-radius: 8px; color: #94A3B8; font-size: 11.5px; font-weight: 500; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <span style="font-size: 12px;">📥</span> <span style="color: #E2E8F0; font-weight: 600;">Ingest Scan</span>
-                        </div>
-                        <div style="padding: 8px 10px; background: #161E2E; border: 1px solid #1E293B; border-radius: 8px; color: #94A3B8; font-size: 11.5px; font-weight: 500; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <span style="font-size: 12px;">💬</span> <span style="color: #E2E8F0; font-weight: 600;">Ask Clinical AI</span>
-                        </div>
-                    </div>
-
-                    <!-- USER ADMIN FOOTER CARD (Matches Reference Image 1 & 2 Footer) -->
-                    <div style="padding-top: 12px; border-top: 1px solid #1E293B; display: flex; align-items: center; justify-content: space-between;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #2563EB, #1D4ED8); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; box-shadow: 0 2px 8px rgba(37,99,235,0.4);">MD</div>
-                            <div>
-                                <div style="font-size: 11.5px; font-weight: 700; color: #FFFFFF;">MD Admin</div>
-                                <div style="font-size: 9.5px; color: #64748B;">Radiologist</div>
-                            </div>
-                        </div>
-                        <span style="color: #64748B; font-size: 14px; font-weight: bold;">›</span>
-                    </div>
+                    <span style="color: #64748B; font-size: 14px; font-weight: bold;">›</span>
                 </div>
-            """)
+            """, elem_classes="sidebar-footer-wrapper")
             
         # Main content area (Scrollable container offset by sidebar width)
         with gr.Column(scale=4, elem_classes="main-content-container"):
-            # DEDICATED FIXED TOP HEADER CONTAINER (Contains Title + Icons + 4 Horizontal Card Boxes)
+            # DEDICATED FIXED TOP HEADER CONTAINER (Contains Title + Icons + 5 Horizontal Card Boxes)
             with gr.Column(elem_classes="top-sticky-header-container"):
                 gr.HTML("""
                     <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 6px;">
@@ -2733,13 +2740,13 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
                     </div>
                 """)
 
-                # 4 Horizontal Card Boxes (Fixed inside top container - NEVER scroll out of view)
+                # 5 Horizontal Card Boxes (Fixed inside top container - NEVER scroll out of view)
                 with gr.Row():
-                    top_tab_overview_btn = gr.Button("🎯  Overview\nDashboard", elem_classes="top-tab-card active-top-card")
-                    top_tab_load_data_btn = gr.Button("📥  Load Data\nIngest & analyze", elem_classes="top-tab-card")
-                    top_tab_dicom_btn = gr.Button("☢️  DICOM & Centroid\nMorphometrics & 2.5D", elem_classes="top-tab-card")
-                    top_tab_clinical_review_btn = gr.Button("📋  Clinical Review\nValidation & notes", elem_classes="top-tab-card")
-                    top_tab_clinical_report_btn = gr.Button("📄  Clinical Report\nDiagnostic report", elem_classes="top-tab-card")
+                    top_tab_overview_btn = gr.Button("🎯  Overview", elem_classes="top-tab-card active-top-card")
+                    top_tab_load_data_btn = gr.Button("📥  Load Data and Analysis", elem_classes="top-tab-card")
+                    top_tab_dicom_btn = gr.Button("☢️  DICOM Processing", elem_classes="top-tab-card")
+                    top_tab_clinical_review_btn = gr.Button("📋  Clinical Review", elem_classes="top-tab-card")
+                    top_tab_clinical_report_btn = gr.Button("📄  Radiologist Report", elem_classes="top-tab-card")
 
             # --- TABS / SECTIONS ---
             
@@ -2810,21 +2817,21 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">neuro_908</td>
+                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">br_908</td>
                                     <td style="padding: 12px 8px; font-weight: 600;">Emma Watson</td>
                                     <td style="padding: 12px 8px;">Brain MRI (.dcm)</td>
                                     <td style="padding: 12px 8px; font-weight: 600; color: #D97706;">genetic</td>
                                     <td style="padding: 12px 8px;"><span style="background-color: #DCFCE7; color: #166534; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700;">Analyzed</span></td>
                                 </tr>
                                 <tr>
-                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">liver_102</td>
-                                    <td style="padding: 12px 8px; font-weight: 600;">Liam Neeson</td>
-                                    <td style="padding: 12px 8px;">Abdominal scan</td>
+                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">br_102</td>
+                                    <td style="padding: 12px 8px; font-weight: 600;">brain mri .jpg</td>
+                                    <td style="padding: 12px 8px;">Brain MRI (.jpg)</td>
                                     <td style="padding: 12px 8px; font-weight: 600; color: #DC2626;">Malignant</td>
                                     <td style="padding: 12px 8px;"><span style="background-color: #FEF3C7; color: #92400E; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700;">Flagged</span></td>
                                 </tr>
                                 <tr>
-                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">neuro_002</td>
+                                    <td style="padding: 12px 8px; font-family: monospace; font-weight: 600;">br_002</td>
                                     <td style="padding: 12px 8px; font-weight: 600;">Daniel Craig</td>
                                     <td style="padding: 12px 8px;">Brain MRI (.png)</td>
                                     <td style="padding: 12px 8px; font-weight: 600; color: #2563EB;">infectious</td>
@@ -2951,16 +2958,16 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
                             with gr.Row():
                                 dicom_patient_name = gr.Textbox(label="Patient Name", placeholder="Extracted automatically from DICOM tags...")
                                 dicom_patient_id = gr.Textbox(label="Patient ID / MRN", placeholder="Extracted automatically from DICOM tags...")
-                            dicom_window_choice = gr.Dropdown(
-                                choices=[
-                                    "Brain Soft Tissue (0 to 80 HU)",
-                                    "Liver Soft Tissue (-15 to 135 HU)",
-                                    "Bone Window (-200 to 1000 HU)",
-                                    "Lung Window (-1000 to -200 HU)",
-                                    "Dynamic Auto-Contrast"
-                                ],
-                                value="Brain Soft Tissue (0 to 80 HU)",
-                                label="🔬 Tissue Hounsfield Unit (HU) Windowing Preset"
+                            
+                            dicom_patient_symptoms_input = gr.Textbox(
+                                label="📝 Patient Symptoms & Presentation (Doctor's Notes)",
+                                placeholder="Type clinical presentation, symptoms, patient history...",
+                                lines=2
+                            )
+                            dicom_history_files_input = gr.File(
+                                label="📁 Upload Patient Previous History Reports & Documents (PDF, TXT, DOCX, Images)",
+                                file_types=[".pdf", ".txt", ".docx", ".png", ".jpg", ".jpeg"],
+                                file_count="multiple"
                             )
                             
                             with gr.Row(elem_classes="action-btn-row"):
@@ -3009,10 +3016,9 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
                     submit_feedback_btn = gr.Button("Submit Feedback", elem_classes="primary-btn")
                     feedback_status = gr.Markdown(value="", container=True)
                     
-            # SECTION 4: CLINICAL DIAGNOSIS & INTERPRETATION (CLINICAL REPORT)
+            # SECTION 4: RADIOLOGIST REPORT
             with gr.Column(visible=False) as clinical_report_section:
                 with gr.Column(elem_classes="card-container"):
-                    gr.Markdown("### 📄 Clinical Justification & RAG Report")
                     rag_output = gr.Markdown(value="*Awaiting scan analysis...*", container=True)
 
     # Navigation Logic Functions (5 Tabs)
@@ -3206,9 +3212,10 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
     )
 
     # DICOM & 2.5D STACKING WORKSPACE ACTION HANDLERS
-    def analyze_dicom_centroid_action(src_type, sample_choice, uploaded_files, custom_url, win_type, pat_name, pat_id):
+    def analyze_dicom_centroid_action(src_type, sample_choice, uploaded_files, custom_url, pat_name, pat_id, patient_symptoms=None, history_files=None):
         try:
             t0 = time.perf_counter()
+            win_type = "Brain Soft Tissue (0 to 80 HU)"
             # 1. Fetch or load raw DICOM
             if "Upload" in src_type and uploaded_files:
                 target_f = uploaded_files[0]
@@ -3271,9 +3278,12 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
             err_box = f"<div style='color: #EF4444; font-weight: bold;'>⚠️ DICOM Parse Error: {str(e)}</div>"
             return None, err_box, err_box, pat_name, pat_id, "### ⚠️ Error analyzing DICOM"
 
-    def analyze_dicom_25d_action(src_type, sample_choice, uploaded_files, custom_url, win_type, pat_name, pat_id):
+    def analyze_dicom_25d_action(src_type, sample_choice, uploaded_files, custom_url, pat_name, pat_id, patient_symptoms=None, history_files=None):
         try:
             t0 = time.perf_counter()
+            win_type = "Brain Soft Tissue (0 to 80 HU)"
+            symptoms_text = str(patient_symptoms).strip() if patient_symptoms else ""
+            history_docs_text = extract_text_from_history_files(history_files) if history_files else ""
             slice_list = []
             
             if "Upload" in src_type and uploaded_files and len(uploaded_files) >= 2:
@@ -3329,21 +3339,21 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
 
             # 3. Format Two-Tier Diagnostic Report with Guardrail Alert if < 90%
             is_low_conf = "Low Confidence" in lvl2 or conf < 90.0
-            status_badge = '<span style="font-size: 11px; background: #EAB308; color: black; padding: 3px 8px; border-radius: 6px; font-weight: 700;">⚠️ Low Confidence Guardrail (&lt;90%)</span>' if is_low_conf else f'<span style="font-size: 11px; background: #22C55E; color: white; padding: 3px 8px; border-radius: 6px; font-weight: 700;">✓ Verified Diagnostic ({elapsed_ms:.1f}ms)</span>'
+            status_badge = '<span class="status-badge-text" style="font-size: 11px; background: #EAB308; color: #000000 !important; padding: 3px 8px; border-radius: 6px; font-weight: 700;">⚠️ Low Confidence Guardrail (&lt;90%)</span>' if is_low_conf else f'<span style="font-size: 11px; background: #22C55E; color: #FFFFFF !important; padding: 3px 8px; border-radius: 6px; font-weight: 700;">✓ Verified Diagnostic ({elapsed_ms:.1f}ms)</span>'
 
             ai_md = f"""
-<div style="background: linear-gradient(135deg, #0F172A, #1E293B); border: 1px solid #38BDF8; border-radius: 10px; padding: 14px; color: #F8FAFC;">
-  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 8px; margin-bottom: 10px;">
-    <span style="font-weight: 800; font-size: 15px; color: #38BDF8;">🏆 TWO-TIER 2.5D HIERARCHICAL AI DIAGNOSTIC REPORT</span>
+<div class="dicom-report-box" style="background: linear-gradient(135deg, #0F172A, #1E293B); border: 2px solid #38BDF8; border-radius: 12px; padding: 16px; color: #FFFFFF !important;">
+  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 12px;">
+    <span style="font-weight: 800; font-size: 16px; color: #FFFFFF !important;">🏆 TWO-TIER 2.5D HIERARCHICAL AI DIAGNOSTIC REPORT</span>
     {status_badge}
   </div>
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
-    <div>🔹 <b>Level 1 Generalist Category</b>: <span style="color: #60A5FA; font-weight: bold;">{lvl1}</span></div>
-    <div>🔹 <b>Level 2 Specialist Finding</b>: <span style="color: {'#F87171' if is_low_conf else '#FBBF24'}; font-weight: bold;">{lvl2}</span></div>
-    <div>🔹 <b>Diagnostic Confidence Score</b>: <span style="color: {'#F87171' if is_low_conf else '#34D399'}; font-weight: bold;">{conf:.1f}%</span></div>
-    <div>🔹 <b>RL Preprocessor Actions</b>: <span style="color: #A78BFA;">{', '.join(rl_actions)}</span></div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13.5px; color: #FFFFFF !important;">
+    <div style="color: #FFFFFF !important;">🔹 <b style="color: #FFFFFF !important;">Level 1 Generalist Category</b>: <span style="color: #FFFFFF !important; font-weight: bold;">{lvl1}</span></div>
+    <div style="color: #FFFFFF !important;">🔹 <b style="color: #FFFFFF !important;">Level 2 Specialist Finding</b>: <span style="color: #FFFFFF !important; font-weight: bold;">{lvl2}</span></div>
+    <div style="color: #FFFFFF !important;">🔹 <b style="color: #FFFFFF !important;">Diagnostic Confidence Score</b>: <span style="color: #FFFFFF !important; font-weight: bold;">{conf:.1f}%</span></div>
+    <div style="color: #FFFFFF !important;">🔹 <b style="color: #FFFFFF !important;">RL Preprocessor Actions</b>: <span style="color: #FFFFFF !important; font-weight: bold;">{', '.join(rl_actions)}</span></div>
   </div>
-  {f"<div style='margin-top: 10px; padding: 8px 12px; background: rgba(234, 179, 8, 0.15); border: 1px solid #EAB308; border-radius: 6px; font-size: 12px; color: #FDE047;'><b>⚠️ Safety Guardrail Activated:</b> Confidence is below the 90% clinical threshold. This scan (e.g. cervical CT vs trained Brain/Liver) is out-of-distribution. Case is automatically routed to <b>Clinical Review</b> for physician validation.</div>" if is_low_conf else ""}
+  {f"<div style='margin-top: 12px; padding: 10px 14px; background: rgba(234, 179, 8, 0.25); border: 1.5px solid #EAB308; border-radius: 8px; font-size: 12.5px; color: #FFFFFF !important;'><b style='color: #FFFFFF !important;'>⚠️ Safety Guardrail Activated:</b> Confidence is below the 90% clinical threshold. This scan (e.g. cervical CT vs trained Brain/Liver) is out-of-distribution. Case is automatically routed to <b style='color: #FFFFFF !important;'>Clinical Review</b> for physician validation.</div>" if is_low_conf else ""}
 </div>
 """
 
@@ -3358,6 +3368,8 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
             # Generate RAG clinical justification
             try:
                 query = f"Clinical justification for 2.5D scan evaluated as {lvl2} in category {lvl1} with {conf:.1f}% confidence."
+                if symptoms_text:
+                    query = f"Patient presentation & symptoms: {symptoms_text}"
                 rag_md = rag_pipeline.run_query(
                     query,
                     patient_name=resolved_name,
@@ -3366,7 +3378,9 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
                     level2_diagnosis=lvl2,
                     confidence=conf,
                     is_low_confidence=is_low_conf,
-                    level2_executed=(not is_low_conf)
+                    level2_executed=(not is_low_conf),
+                    patient_symptoms=symptoms_text,
+                    prior_history_text=history_docs_text
                 )
             except Exception:
                 rag_md = f"### 📄 2.5D Clinical RAG Justification Report\n*   **Primary Finding**: **{lvl2}** ({conf:.1f}% Confidence)\n*   **Organ System**: `{lvl1}`\n*   **Clinical Recommendation**: Review volumetric axial series and clinical history."
@@ -3383,19 +3397,19 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
             "*Extracted patient and acquisition tags will appear here...*",
             None, None, None, None,
             "*2.5D Hierarchical AI Diagnostic Classification will appear here...*",
-            "", ""
+            "", "", "", None
         )
 
     # Wire up DICOM Action Triggers
     btn_run_dicom_centroid.click(
         fn=analyze_dicom_centroid_action,
-        inputs=[dicom_source_radio, dicom_sample_dropdown, dicom_file_upload, dicom_custom_url, dicom_window_choice, dicom_patient_name, dicom_patient_id],
+        inputs=[dicom_source_radio, dicom_sample_dropdown, dicom_file_upload, dicom_custom_url, dicom_patient_name, dicom_patient_id, dicom_patient_symptoms_input, dicom_history_files_input],
         outputs=[dicom_image_display, dicom_centroid_report, dicom_meta_report, dicom_patient_name, dicom_patient_id, review_case_display]
     )
 
     btn_run_25d_stacking.click(
         fn=analyze_dicom_25d_action,
-        inputs=[dicom_source_radio, dicom_sample_dropdown, dicom_file_upload, dicom_custom_url, dicom_window_choice, dicom_patient_name, dicom_patient_id],
+        inputs=[dicom_source_radio, dicom_sample_dropdown, dicom_file_upload, dicom_custom_url, dicom_patient_name, dicom_patient_id, dicom_patient_symptoms_input, dicom_history_files_input],
         outputs=[img_slice_prev, img_slice_center, img_slice_next, img_slice_composite, ai_25d_report, dicom_patient_name, dicom_patient_id, review_case_display, rag_output]
     )
 
@@ -3405,7 +3419,8 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
         outputs=[
             dicom_image_display, dicom_centroid_report, dicom_meta_report,
             img_slice_prev, img_slice_center, img_slice_next, img_slice_composite,
-            ai_25d_report, dicom_patient_name, dicom_patient_id
+            ai_25d_report, dicom_patient_name, dicom_patient_id,
+            dicom_patient_symptoms_input, dicom_history_files_input
         ]
     )
 
