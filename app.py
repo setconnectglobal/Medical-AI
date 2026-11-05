@@ -2745,13 +2745,6 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
                 )
                 login_err_msg = gr.HTML("")
                 login_btn = gr.Button("🔐  Sign In to Diagnostic Workstation", elem_classes="primary-btn", size="lg")
-
-                gr.HTML("""
-                    <div style="margin-top: 20px; padding: 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; font-size: 12px; color: #475569; text-align: center;">
-                        <div style="font-weight: 700; color: #334155; margin-bottom: 3px;">Authorized Radiologist Access</div>
-                        <div>Username: <code style="color: #2563EB; font-weight: 700;">MD Admin</code> &nbsp;|&nbsp; Password: <code style="color: #2563EB; font-weight: 700;">Admin123</code></div>
-                    </div>
-                """)
             with gr.Column(scale=1):
                 pass
 
@@ -3511,7 +3504,7 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
         else:
             err = """
             <div style="background-color: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B; padding: 10px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600; margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-                <span>⚠️</span> <span><b>Access Denied:</b> Invalid credentials. Required: <code>MD Admin</code> / <code>Admin123</code></span>
+                <span>⚠️</span> <span><b>Access Denied:</b> Invalid username or password. Please verify your credentials and try again.</span>
             </div>
             """
             return gr.update(visible=True), gr.update(visible=False), err
