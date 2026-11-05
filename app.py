@@ -2654,6 +2654,22 @@ td {
 .action-btn-row {
     margin-top: 16px !important;
 }
+
+/* Clinical Login Portal Styling */
+.login-outer-container {
+    padding: 70px 16px 50px 16px !important;
+    min-height: 85vh !important;
+}
+
+.login-card-box {
+    max-width: 480px !important;
+    margin: 0 auto !important;
+    padding: 40px 36px !important;
+    border-radius: 20px !important;
+    box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.12) !important;
+    border: 1px solid #E2E8F0 !important;
+    background-color: #FFFFFF !important;
+}
 """
 
 import base64
@@ -2689,7 +2705,60 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
     gr.HTML(f"<style>{custom_css}</style>")
     current_doc_id = gr.State("")
 
-    with gr.Row():
+    # ==============================================================================
+    # 0. CLINICAL PORTAL LOGIN VIEW (Authorized Personnel Only)
+    # ==============================================================================
+    with gr.Column(visible=True, elem_classes="login-outer-container") as login_view:
+        with gr.Row():
+            with gr.Column(scale=1):
+                pass
+            with gr.Column(scale=2, elem_classes="card-container login-card-box"):
+                gr.HTML(f"""
+                    <div style="text-align: center; margin-bottom: 24px;">
+                        <div style="display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                            {get_logo_html()}
+                        </div>
+                        <div style="font-size: 24px; font-weight: 800; color: #0F172A; letter-spacing: -0.02em; line-height: 1.2;">
+                            Set<span style="color: #2563EB;">CONNECT</span>
+                        </div>
+                        <div style="font-size: 13px; font-weight: 600; color: #64748B; margin-top: 4px;">
+                            Medical AI Diagnostic Workstation
+                        </div>
+                        <div style="display: inline-block; margin-top: 12px; background: #EFF6FF; border: 1px solid #BFDBFE; color: #1D4ED8; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em;">
+                            Clinical Radiologist Portal
+                        </div>
+                    </div>
+                """)
+
+                login_user = gr.Textbox(
+                    label="Radiologist / Staff Username",
+                    placeholder="Enter clinical username (e.g. MD Admin)",
+                    value="",
+                    lines=1
+                )
+                login_pass = gr.Textbox(
+                    label="Security Password",
+                    placeholder="Enter password",
+                    value="",
+                    type="password",
+                    lines=1
+                )
+                login_err_msg = gr.HTML("")
+                login_btn = gr.Button("🔐  Sign In to Diagnostic Workstation", elem_classes="primary-btn", size="lg")
+
+                gr.HTML("""
+                    <div style="margin-top: 20px; padding: 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; font-size: 12px; color: #475569; text-align: center;">
+                        <div style="font-weight: 700; color: #334155; margin-bottom: 3px;">Authorized Radiologist Access</div>
+                        <div>Username: <code style="color: #2563EB; font-weight: 700;">MD Admin</code> &nbsp;|&nbsp; Password: <code style="color: #2563EB; font-weight: 700;">Admin123</code></div>
+                    </div>
+                """)
+            with gr.Column(scale=1):
+                pass
+
+    # ==============================================================================
+    # MAIN WORKSPACE ROW (Protected behind Authentication)
+    # ==============================================================================
+    with gr.Row(visible=False) as main_workspace_row:
         # Sidebar menu (Dark Navy - Fixed Pinned with NO Scrollbar)
         with gr.Column(scale=1, elem_classes="sidebar-container"):
             gr.HTML(f"""
@@ -2725,6 +2794,7 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
                     <span style="color: #64748B; font-size: 14px; font-weight: bold;">›</span>
                 </div>
             """, elem_classes="sidebar-footer-wrapper")
+            logout_btn = gr.Button("🚪  Sign Out", elem_classes="sidebar-nav-btn", size="sm")
             
         # Main content area (Scrollable container offset by sidebar width)
         with gr.Column(scale=4, elem_classes="main-content-container"):
@@ -3430,6 +3500,39 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
             ai_25d_report, dicom_patient_name, dicom_patient_id,
             dicom_patient_symptoms_input, dicom_history_files_input
         ]
+    )
+
+    # ==============================================================================
+    # 13. AUTHENTICATION & SESSION HANDLERS
+    # ==============================================================================
+    def handle_login(u, p):
+        if str(u).strip() == "MD Admin" and str(p) == "Admin123":
+            return gr.update(visible=False), gr.update(visible=True), ""
+        else:
+            err = """
+            <div style="background-color: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B; padding: 10px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600; margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                <span>⚠️</span> <span><b>Access Denied:</b> Invalid credentials. Required: <code>MD Admin</code> / <code>Admin123</code></span>
+            </div>
+            """
+            return gr.update(visible=True), gr.update(visible=False), err
+
+    def handle_logout():
+        return gr.update(visible=True), gr.update(visible=False), "", "", ""
+
+    login_btn.click(
+        fn=handle_login,
+        inputs=[login_user, login_pass],
+        outputs=[login_view, main_workspace_row, login_err_msg]
+    )
+    login_pass.submit(
+        fn=handle_login,
+        inputs=[login_user, login_pass],
+        outputs=[login_view, main_workspace_row, login_err_msg]
+    )
+    logout_btn.click(
+        fn=handle_logout,
+        inputs=[],
+        outputs=[login_view, main_workspace_row, login_user, login_pass, login_err_msg]
     )
 
 
