@@ -2731,13 +2731,13 @@ with gr.Blocks(title="SetConnect Diagnostic Workstation", theme=custom_theme) as
                 """)
 
                 login_user = gr.Textbox(
-                    label="Radiologist / Staff Username",
-                    placeholder="Enter clinical username (e.g. MD Admin)",
+                    label="Username",
+                    placeholder="Enter username (e.g. MD Admin)",
                     value="",
                     lines=1
                 )
                 login_pass = gr.Textbox(
-                    label="Security Password",
+                    label="Password",
                     placeholder="Enter password",
                     value="",
                     type="password",
